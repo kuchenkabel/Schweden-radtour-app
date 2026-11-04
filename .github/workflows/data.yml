@@ -27,7 +27,7 @@ jobs:
           osmium tags-filter sweden.osm.pbf \
             nwa/amenity=shelter,drinking_water,water_point,toilets,pharmacy,clinic,hospital \
             nwa/tourism=camp_site,hostel,wilderness_hut,alpine_hut \
-            nwa/leisure=bathing_place,playground \
+            nwa/leisure=bathing_place,swimming_area,playground \
             nwa/healthcare=centre,hospital \
             nwa/shop=supermarket,convenience,bicycle,outdoor,sports,hardware,doityourself \
             nw/railway=station,halt \

@@ -46,7 +46,7 @@ def classify(t):
         hay = " ".join(t.get(k, "") for k in ("operator", "brand", "name", "network")).lower()
         return "stf" if any(m in hay for m in STF_MARKERS) else "hostel"
     lei = t.get("leisure")
-    if lei == "bathing_place":
+    if lei in ("bathing_place", "swimming_area"):
         return "badplats"
     if lei == "playground":
         return "spielplatz"

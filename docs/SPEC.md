@@ -31,10 +31,10 @@ Navigation Abbiegung für Abbiegung übernimmt OsmAnd oder Organic Maps.
 | U2 | **"Was kommt als Nächstes"**: Liste entlang der Route ab aktueller Position: nächste Badestelle, Spielplatz, Trinkwasser, WC, Supermarkt, Vindskydd, Camping. Mit Entfernung in km auf der Route | Ja |
 | U3 | POI-Filter auf der Karte (Ebenen ein/aus) | Ja |
 | U4 | POI-Details: Öffnungszeiten, Ausstattung (z.B. Waschmaschine, Zeltwiese) soweit in OSM vorhanden, Link zur Webseite | Ja |
-| U5 | **Bail-out**: nächste Bahnhöfe, die Rad und Anhänger mitnehmen, mit Regel des Verkehrsverbunds | Ja |
+| U5 | **Bail-out**: nächste Bahnhöfe mit Rad-Mitnahme und Regel des Verkehrsverbunds. Kein Verbund erlaubt laut Recherche ausdrücklich Kinderanhänger, daher zusätzlich Großraumtaxi ("storbil") als Option für Anhänger + Kleinkind | Ja |
 | U6 | **Notfall**: nächstes Apotek und Vårdcentral, 112, 1177 Vårdguiden, Notfallkarte pro Person (Allergien, Medikamente, Blutgruppe), Standort als SMS teilen | Ja |
 | U7 | **Wetter und Wind** (wenn Netz da): SMHI-Prognose für heute und morgen, Gegenwind auf der Etappe, geschätzte machbare km ("Gegenwind 6 m/s: eher 30 km") | Ja |
-| U8 | **Feuerverbot**: Link und Hinweis zu Eldningsförbud der Region, letzter Stand gecacht | Ja (Link) |
+| U8 | **Feuerverbot**: SMHI-Brandrisiko (Fire Weather Index, maschinenlesbar) plus Link zum Eldningsförbud der Länsstyrelse (kein offener Datendienst) | Ja |
 | U9 | In OsmAnd/Organic Maps öffnen (Etappe als GPX übergeben) | Ja |
 | U10 | Tages-Erinnerungen 15:30: "Camp aufbauen, Wasser auffüllen, Zeckencheck" | Ja |
 | U11 | Countdown zur nächsten Badestelle groß auf dem Startbildschirm (für die Kinder) | Ja |
@@ -59,13 +59,13 @@ Navigation Abbiegung für Abbiegung übernimmt OsmAnd oder Organic Maps.
 | Daten | Quelle | Wie |
 | --- | --- | --- |
 | POIs ganz Schweden | OpenStreetMap (Geofabrik-Extrakt Schweden) | Wird per GitHub Actions monatlich gefiltert und als kompakte Datei (SQLite oder GeoJSON, Ziel unter 30 MB) in die App gepackt |
-| Badestellen | Havs- och vattenmyndigheten (offene Daten) plus OSM `leisure=bathing_place` | Wie oben, zusammengeführt |
+| Badestellen | OSM `leisure=bathing_place` und `swimming_area`. HaV-Daten (Wasserqualität) erst später: Nutzungsbedingungen und API-Schlüssel nötig, siehe [datenquellen.md](datenquellen.md) | Wie oben |
 | Kartenkacheln | Protomaps/OpenMapTiles-kompatible Vektorkacheln (PMTiles) | Planen: online. Unterwegs: Korridor-Download (P8) |
 | Routing | BRouter (öffentlicher Server, online) | Nur im Planungsmodus |
 | Höhen | BRouter liefert Höhen mit der Route | Mit P2; bei GPX-Import aus der Datei |
 | Wetter und Wind | SMHI Open Data API | Online, letzter Abruf gecacht |
 | Juli-Wind je Region | SMHI historische Daten | Einmalig ausgewertet, als Tabelle in der App |
-| Rad/Anhänger im Zug | Eigene Recherche je Verkehrsverbund | Tabelle in der App, Stand mit Datum |
+| Rad/Anhänger im Zug | Eigene Recherche je Verkehrsverbund: [data/transport-rules.json](../data/transport-rules.json) | Tabelle in der App, Stand mit Datum |
 
 OSM-Kategorien: `amenity=shelter` (shelter_type=lean_to/weather_shelter), `tourism=camp_site`, `tourism=hostel` (STF über operator/brand), `leisure=bathing_place`, `leisure=playground`, `amenity=drinking_water`, `amenity=toilets`, `shop=supermarket|convenience`, `shop=bicycle`, `shop=outdoor|hardware|sports` (Gaskartuschen), `amenity=pharmacy`, `healthcare=centre|amenity=clinic`, `railway=station`.
 

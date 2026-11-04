@@ -1,0 +1,394 @@
+[
+ {
+  "id": "skanetrafiken",
+  "name": "Skånetrafiken (Pågatåg, Öresundståg, Krösatåg)",
+  "type": "regional",
+  "region": [
+   "Skåne"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Je Person 1 Rad (auch E-Bike) auf Öresundståg, Pågatåg, Krösatåg nur nach Platz; Tandem auf Öresund-/Pågatåg. Kein Rad in Stadtbus/Tram. Max. ca. 6 Räder je Zug (Cykelfrämjandet/Öresundståg).",
+  "trailer": "unknown",
+  "trailerNote": "Kein Wort zu Fahrradanhängern in den Reisebedingungen (nur Kinderwagen gratis nach Platz). Nicht als erlaubt belegt, Annahme: nicht mitnehmbar; Kundenservice fragen.",
+  "cost": "Kostenlos in Skåne; über die Öresundbrücke Fahrradzuschlag nötig (Betrag auf Seite nicht genannt; Kauf in Skånetrafiken-App/Automat, nachträglich möglich).",
+  "reservation": "Keine Reservierung; nur nach Platz.",
+  "restrictions": "Fahrgäste ohne Rad, Rollstuhl, Kinderwagen haben Vorrang; Rad muss im markierten Bereich gesichert werden. Regionalbus-Regeln nur auf Website (Seite nicht abrufbar). Rush-hour-Verbot laut Skånetrafiken-News aufgehoben.",
+  "sourceUrl": "https://www.skanetrafiken.se/globalassets/dokumentbank/resevillkor/villkor/till-webben-villkor-vid-resa-i-skanetrafikens-biljettsystem-februari-2026.pdf",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "oresundstag",
+  "name": "Öresundståg (Betreiber-Info)",
+  "type": "train_operator",
+  "region": [
+   "Skåne",
+   "Kronoberg",
+   "Kalmar",
+   "Blekinge",
+   "Halland",
+   "Västra Götaland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "1 normales Zweirad pro Person, max. 6 Räder je Zug im Niederflurbereich, nach Platz; Zugbegleiter entscheidet. Nicht im Schienenersatzverkehr. Klapprad/Mikrorad = Handgepäck gratis.",
+  "trailer": "unknown",
+  "trailerNote": "Oresundstag.se erwähnt keine Anhänger. Kalmar länstrafik: Anhänger NICHT erlaubt; Kronoberg: nur Hyllie-Tårnby (Brückenabschnitt) erlaubt.",
+  "cost": "Gratis innerhalb Schwedens/Dänemarks; Malmö-Kopenhagen Fahrradticket nötig (Preis nicht genannt, nur über Skånetrafiken).",
+  "reservation": "Nein",
+  "restrictions": "Tandem = 2 Fahrradtickets. Ladegerät-Verbot im Zug.",
+  "sourceUrl": "https://www.oresundstag.se/en/travel-information/on-board",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "vasttrafik",
+  "name": "Västtrafik (Västtåg, Öresundståg, Busse, Boote)",
+  "type": "regional",
+  "region": [
+   "Västra Götaland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Züge: Räder/E-Bikes im Wagen mit Fahrradsymbol, max. 190x70 cm, gratis, nach Platz; Personal entscheidet. Busse/Tram: normale Räder nicht erlaubt (nur kleine Kinderräder). Boote: meist ja, an Deck, gratis (Ausnahmen).",
+  "trailer": "unknown",
+  "trailerNote": "Seite nennt keine Anhänger. Lastenräder/Tandems auf Saltholmen-Booten als Fracht 30 SEK; Kosteröarna 60/100 SEK.",
+  "cost": "Zug gratis; Boote meist gratis, Ausnahmen (Saltholmen Tandem/Lastenrad 30 SEK, Strömstad-Koster 60 SEK einfach/100 retour).",
+  "reservation": "Nein",
+  "restrictions": "Västra stambanan: Göteborg-Alingsås 22.6.-16.8.(2026) Bahnsperre, Ersatzbusse ohne Räder. Partnerbetreiber (Vy, SJ) können abweichen. Skövde Linien 8/9 Rad erlaubt bis 10.10.2027.",
+  "sourceUrl": "https://www.vasttrafik.se/resa-med-oss/under-resan/cykel/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "hallandstrafiken",
+  "name": "Hallandstrafiken",
+  "type": "regional",
+  "region": [
+   "Halland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Regionalbusse: Rad im Heckträger nach Platz; Stadtbusse nein. Züge: Fahrgäste ohne Rad, mit Behinderung oder Kinderwagen haben Vorrang; Zugbegleiter entscheidet. Laut Cykelfrämjandet gratis in Halland.",
+  "trailer": "unknown",
+  "trailerNote": "Auf der offiziellen Seite nicht erwähnt.",
+  "cost": "Offizielle Seite nennt keine Kosten (Verweis auf Preisseite); Sekundärquelle: gratis in Halland, außerhalb Jugendpreis.",
+  "reservation": "Nein (Sekundärquelle)",
+  "restrictions": "Rad nicht aus den Augen lassen; ggf. nächste Abfahrt warten.",
+  "sourceUrl": "https://www.hallandstrafiken.se/vanliga-fragor-och-svar/2025-05-12-far-jag-ta-med-min-cykel-pa-buss-tag",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "blekingetrafiken",
+  "name": "Blekingetrafiken",
+  "type": "regional",
+  "region": [
+   "Blekinge"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Züge (Krösatåg/Öresundståg/Pågatåg): 1 Rad/Person gratis nach Platz. Regionalbusse nur mit Heckträger, max. 2 Räder, keine E-Bikes/Tandems.",
+  "trailer": "unknown",
+  "trailerNote": "Anhänger in den südschwedischen Reisebedingungen nicht erwähnt; Kalmar länstrafik verbietet sie auf Krösatåg Kalmar-Karlskrona.",
+  "cost": "Gratis; Zuschlag bei Verstoß (Blekinge-Teil: 1500 SEK genannt).",
+  "reservation": "Nein",
+  "restrictions": "Bus nur Mo-Fr 9-15 und 18-4 Uhr, Wochenende/Feiertage frei, 15.6.-15.8. jederzeit nach Platz. Eigene Gurte mitbringen; Fahrer hilft nicht.",
+  "sourceUrl": "https://www.blekingetrafiken.se/kundservice/regler-och-villkor/resevillkor-for-kollektivtrafiken-i-sodra-sverige/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "kalmar",
+  "name": "Kalmar länstrafik (Krösatåg, Öresundståg, Regionbusse, Dessi-Fähre)",
+  "type": "regional",
+  "region": [
+   "Kalmar"
+  ],
+  "bikes": "limited",
+  "bikesNote": "1 Rad/Person gratis nach Platz auf Öresundståg (max 6) und Krösatåg Kalmar-Emmaboda/Karlskrona. Krösatåg Kalmar-Linköping und Västervik-Linköping: KEINE Zweiräder. SJ-Regionalzüge: nein. Regionbus: 2 Räder hinten; Linie 500 nein. Dessi-Fähre Kalmar-Färjestaden: 50 Räder, im Ticket enthalten.",
+  "trailer": "no",
+  "trailerNote": "Fahrradanhänger (cykelkärra) ausdrücklich NICHT erlaubt auf Öresundståg, Krösatåg Kalmar-Emmaboda/Karlskrona und Regionbussen. Auch keine Lastenräder/Dreiräder.",
+  "cost": "Gratis (1 Rad/Person in Kalmar län); Dessi im Ticket.",
+  "reservation": "Nein",
+  "restrictions": "Dessi-Fähre nur Mitte Mai bis Mitte September. Nicht im Ersatzverkehr.",
+  "sourceUrl": "https://kalmarlanstrafik.se/reseinformation/infor-resan/cykel/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "kronoberg",
+  "name": "Länstrafiken Kronoberg (Krösatåg, Öresundståg, Busse)",
+  "type": "regional",
+  "region": [
+   "Kronoberg"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Züge (Öresund, Krösa, Pågatåg): Rad, E-Bike, Klapprad gratis, nach Platz; Zugbegleiter entscheidet. Busse nur Regionalbusse. Nicht Kalmar-Linköping/Västervik-Linköping. Nicht im Ersatzverkehr.",
+  "trailer": "limited",
+  "trailerNote": "Fahrradanhänger, Lastenräder und Dreiräder nur auf Öresundståg und nur zwischen Hyllie und Tårnby; auf Bussen nicht erlaubt. Krösatåg: laut Seite nicht gelistet (also nein).",
+  "cost": "Gratis, 1 Rad/Person in Kronoberg.",
+  "reservation": "Keine Angabe auf Seite",
+  "restrictions": "Max. 6 Räder auf Öresundståg. Keine Saisonbeschränkung genannt.",
+  "sourceUrl": "https://lanstrafikenkron.se/a/resa-med-cykel",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "jlt",
+  "name": "Jönköpings länstrafik (Krösatåg, Västtåg, Regionbusse)",
+  "type": "regional",
+  "region": [
+   "Jönköping"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Regionbus: Heckträger (2 Räder), gratis, auf eigenes Risiko, eigene Gurte. Krösatåg/Västtåg: gratis nach Platz. SJ Regionaltåg (Kust till kust): nein. Stadtbusse nein.",
+  "trailer": "unknown",
+  "trailerNote": "Auf der Seite nicht erwähnt.",
+  "cost": "Gratis",
+  "reservation": "Nein (nur nach Platz)",
+  "restrictions": "Nachbarlän können abweichen. Kein Rad auf SJ Regionaltåg.",
+  "sourceUrl": "https://www.jlt.se/res-med-oss/far-jag-ta-med-cykel-pa-resan/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "ostgotatrafiken",
+  "name": "Östgötatrafiken (Östgötapendeln, Busse)",
+  "type": "regional",
+  "region": [
+   "Östergötland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Östgötapendeln: max. 6 Räder je Zug, nach Platz, Kinderwagen haben Vorrang. Nicht im Ersatzbus. Krösatåg Linköping-Kalmar/Västervik (SJ): nein. Laut Cykelfrämjandet nicht zur Rush-Hour (nicht bestätigt).",
+  "trailer": "unknown",
+  "trailerNote": "Auf der Seite nicht erwähnt.",
+  "cost": "Seite nennt keine Kosten (Sekundärquelle: gratis).",
+  "reservation": "Nein",
+  "restrictions": "Räder im Gepäcknetz/Tasche = Handgepäck. Nicht auf Bahnsteig fahren.",
+  "sourceUrl": "https://www.ostgotatrafiken.se/res-med-oss/allt-om-resan/vad-och-vem-far-du-ta-med/cykel-pa-ostgotapendeln",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "sl",
+  "name": "SL (Stockholm: Pendeltåg, Tvärbanan, Saltsjöbanan, Pendelbåt)",
+  "type": "regional",
+  "region": [
+   "Stockholm"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Räder erlaubt auf Pendeltåg, Tvärbanan, Saltsjöbanan, Lidingöbanan, Roslagsbanan (nur neue Züge), Pendelbåt 'med vissa begränsningar'. Nicht in U-Bahn.",
+  "trailer": "unknown",
+  "trailerNote": "Auf der Seite nicht erwähnt.",
+  "cost": "Seite nennt keine Kosten (Sekundärquelle: gratis).",
+  "reservation": "Nein",
+  "restrictions": "Beschränkungen auf Seite nicht genannt; UL-Seite: Pendeltåg Uppsala-Stockholm Mo-Fr 6-9 und 15-18 kein Rad, nie zu/von Arlanda C und Stockholm City.",
+  "sourceUrl": "https://sl.se/reseplanering/att-resa-med-sl/vad-du-far-ta-med-pa-resan/cykel",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "ul",
+  "name": "UL Uppsala länstrafik",
+  "type": "regional",
+  "region": [
+   "Uppsala"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Regionalbusse: gratis, 1-2 Räder, max 25 kg, nach Platz; Stadtbusse Uppsala/Enköping nein. Pendeltåg nach SL-Regeln. Mälartåg nach Mälardalstrafik-Regeln.",
+  "trailer": "unknown",
+  "trailerNote": "Seite erwähnt keine Anhänger (Kundenservice 0771-14 14 14).",
+  "cost": "Gratis",
+  "reservation": "Nein",
+  "restrictions": "Nicht auf Regionallinien 110, 111, 115 und SL-Bus 579, 593, 677. Pendeltåg-Sperre Uppsala-Stockholm zu Stoßzeiten.",
+  "sourceUrl": "https://www.ul.se/en/travel-info/travel-with-us/rules-on-board/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "sormland",
+  "name": "Sörmlandstrafiken",
+  "type": "regional",
+  "region": [
+   "Södermanland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Nur Landbusse belegt: gratis, max. 2 Räder, hinten/Gepäckraum, nach Platz, keine E-Bikes, Stadtbusse nein. Zugregeln nicht auf der Seite.",
+  "trailer": "unknown",
+  "trailerNote": "Nicht erwähnt.",
+  "cost": "Gratis (Landbus)",
+  "reservation": "Nein",
+  "restrictions": "Zugregeln unbekannt (Mälartåg/SJ-Verkehr siehe dort).",
+  "sourceUrl": "https://sormlandstrafiken.se/res-med-oss/regler-ombord/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "varmland",
+  "name": "Värmlandstrafik",
+  "type": "regional",
+  "region": [
+   "Värmland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Cykelplats-på-bussen: buchbare Fahrradplätze in Bussen (Linien 500, 600, 700, 800 für Vänerleden, Klarälvsbanan, Unionsleden), 2 Räder je Abfahrt. Zug: Cykelfrämjandet nennt 2 Räder und Gebühr (ca. 20 kr), nicht offiziell bestätigt.",
+  "trailer": "unknown",
+  "trailerNote": "Anhänger nicht erwähnt; Heckträger passt für ca. 59-62 cm Räder.",
+  "cost": "Rad gratis, normales Ticket. Zug laut Sekundärquelle 20 kr.",
+  "reservation": "Ja für Bus: online cykelbokning.varmlandstrafik.se, spätestens 1 Werktag vorher.",
+  "restrictions": "Saison Bus 15.6.-16.8. (2026); 2027 Termine prüfen. Selbst auf-/abladen.",
+  "sourceUrl": "https://www.varmlandstrafik.se/varmlandstrafik/res-med-oss/fler-resesatt/cykelplats-pa-bussen",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "dalatrafik",
+  "name": "Dalatrafik (Tåg i Bergslagen, Tågab)",
+  "type": "regional",
+  "region": [
+   "Dalarna"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Direkt-/Landbusse: gratis, 'först till kvarn', auf eigenes Risiko. Stadt-/Flexbusse nein. Tåg i Bergslagen: Rad mit Ausnahmen (Details auf tagibergslagen.se).",
+  "trailer": "unknown",
+  "trailerNote": "Nicht erwähnt.",
+  "cost": "Bus gratis; Tåg i Bergslagen laut Sekundärquelle gratis, 2-3 Räder.",
+  "reservation": "Nein",
+  "restrictions": "Falt-/Kickbike auf Stadtbus max 120 cm/15 kg.",
+  "sourceUrl": "https://www.dalatrafik.se/sa-reser-du-med-oss/ombord/vad-och-vem-far-du-ta-med/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "xtrafik",
+  "name": "X-trafik (Gävleborg, X-tåg)",
+  "type": "regional",
+  "region": [
+   "Gävleborg",
+   "Västernorrland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "X-tåg ganzjährig, max 2 Räder/Zug, bis 25 kg. Regionalbus nur 1.4.-31.10., max 2 Räder, 25 kg. Stadtbusse nein.",
+  "trailer": "no",
+  "trailerNote": "Fahrradanhänger/-wagen NICHT erlaubt; auch kein Tandem, Lastenrad, Dreirad.",
+  "cost": "30 kr pro Rad (Bus und X-tåg).",
+  "reservation": "Nein, nicht buchbar",
+  "restrictions": "Nicht im Närtrafik oder Schienenersatzverkehr.",
+  "sourceUrl": "https://xtrafik.se/cykel-i-kollektivtrafiken",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "norrtag",
+  "name": "Norrtåg",
+  "type": "train_operator",
+  "region": [
+   "Norrbotten",
+   "Västerbotten",
+   "Jämtland",
+   "Västernorrland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Normale Räder gratis nach Platz, 3 Räder je Zug, max 30 kg. Im Ersatzbus nicht garantiert.",
+  "trailer": "no",
+  "trailerNote": "Fahrradanhänger (cykelkärror) NICHT erlaubt, ebenso Tandem. Verpacktes Rad als Sondergepäck bis 140x40x95 cm.",
+  "cost": "Gratis (laut Seite)",
+  "reservation": "Nein",
+  "restrictions": "Nattåget und andere Betreiber eigene Regeln.",
+  "sourceUrl": "https://norrtag.se/fragor-och-svar/far-jag-resa-med-cykel/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "sj",
+  "name": "SJ (Fernzüge, Regionaltåge)",
+  "type": "train_operator",
+  "region": [
+   "Alle (Fernverkehr)"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Offizielle SJ-Seite nicht abrufbar. Laut Cykelfrämjandet: nur zerlegte, verpackte Räder in Tasche/Karton (max 140x85x30 cm, 25 kg), nach Platz. SJ Regionaltåg Kust-till-Kust und Krösatåg Linköping-Kalmar laut JLT/Kalmar: keine Räder.",
+  "trailer": "no",
+  "trailerNote": "Nicht erwähnt; mit Rad-Verbot außer verpackt praktisch nicht mitnehmbar (Sekundärquelle).",
+  "cost": "Nicht genannt",
+  "reservation": "Unbekannt",
+  "restrictions": "Nur Sekundärquelle (Cykelfrämjandet); vor Reise bei SJ prüfen.",
+  "sourceUrl": "https://cykelframjandet.se/cykel-pa-tag/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "malartag",
+  "name": "Mälartåg (Mälardalstrafik)",
+  "type": "train_operator",
+  "region": [
+   "Stockholm",
+   "Uppsala",
+   "Södermanland",
+   "Västmanland",
+   "Örebro",
+   "Östergötland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Gratis, nach Platz: Doppelstock max 6 Räder je Zug, kleine Regina 1-2. Kein Zustieg am Arlanda C.",
+  "trailer": "no",
+  "trailerNote": "Fahrradanhänger/-wagen NICHT erlaubt; auch kein Tandem, Lastenrad.",
+  "cost": "Gratis",
+  "reservation": "Nein",
+  "restrictions": "Rad an Bahnhöfen schieben; Ladeverbot; keine Zeitbeschränkung genannt.",
+  "sourceUrl": "https://www.malardalstrafik.se/cykel",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "snalltaget",
+  "name": "Snälltåget",
+  "type": "train_operator",
+  "region": [
+   "Skåne",
+   "Småland",
+   "Dalarna",
+   "Jämtland"
+  ],
+  "bikes": "limited",
+  "bikesNote": "Räder nur auf Fjälltåg 24 und 25 (Sommer/Herbst), im Gepäckwagen, verpackt. Tagzug Stockholm-Malmö: keine Räder (Cykelfrämjandet).",
+  "trailer": "unknown",
+  "trailerNote": "Nicht erwähnt.",
+  "cost": "199 SEK je Richtung; Umstieg zu Zug 24/25 125 SEK.",
+  "reservation": "Ja, bei Ticketkauf oder in Min resa",
+  "restrictions": "Klappräder im Handgepäck max 55x45x25 cm.",
+  "sourceUrl": "https://www.snalltaget.se/cykel",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "ferry-ttline",
+  "name": "TT-Line Travemünde/Rostock - Trelleborg",
+  "type": "ferry",
+  "region": [
+   "Skåne"
+  ],
+  "bikes": "yes",
+  "bikesNote": "Radfahrer buchbar (bis 5 Räder je Buchung), Rückfahr-Paket für Fußgänger/Radfahrer mit Rad. Warnweste Pflicht in Check-in-Spuren. Räder am Auto brauchen keine Extrabuchung.",
+  "trailer": "unknown",
+  "trailerNote": "Fahrradanhänger nicht explizit erwähnt; allgemein Anhänger je angefangenen Meter berechnet, max Gespann 17 m. Anfragen bei TT-Line.",
+  "cost": "Kein fester Preis auf Seite; im Buchungsdialog. Tickets ab 59 EUR (Gesamtsegment). Umbuchung 40 EUR.",
+  "reservation": "Ja online",
+  "restrictions": "Überfahrt ca. 7-9 h.",
+  "sourceUrl": "https://www.ttline.com/en/faq/",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "ferry-stena",
+  "name": "Stena Line Kiel-Göteborg / Rostock-Trelleborg",
+  "type": "ferry",
+  "region": [
+   "Västra Götaland",
+   "Skåne"
+  ],
+  "bikes": "unknown",
+  "bikesNote": "Reisebedingungen nennen keine Fahrradgebühr; Radfahrer wohl als Fußgänger. Fahrzeuge/Anhänger mit Rädern bei Buchung angeben.",
+  "trailer": "unknown",
+  "trailerNote": "Cykelkärra nicht genannt; Anhänger bei Buchung angeben. Kundenservice 0770-57 57 00.",
+  "cost": "Nicht gefunden",
+  "reservation": "Ja bei Buchung",
+  "restrictions": "Keine offizielle Fahrrad-Seite gefunden.",
+  "sourceUrl": "https://www.stenaline.se/content/dam/stenaline/sv/documents/legal/Travel_Terms_Conditions_Sweden_2025-09-25.pdf",
+  "checkedDate": "2026-11-04"
+ },
+ {
+  "id": "ferry-scandlines",
+  "name": "Scandlines Puttgarden-Rødby / Helsingør-Helsingborg",
+  "type": "ferry",
+  "region": [
+   "Skåne"
+  ],
+  "bikes": "yes",
+  "bikesNote": "Puttgarden-Rødby: Fußgänger-Tagesticket (ca. 11 EUR retour) plus Fahrrad-Add-on (ab 3 EUR retour, selber Kalendertag). Kombiticket nach Schweden für Autos ab 99,75 EUR. Helsingør-Helsingborg Radpreise nicht gefunden.",
+  "trailer": "unknown",
+  "trailerNote": "Fahrradanhänger nicht erwähnt.",
+  "cost": "Add-on ab 3 EUR; Fußgänger-Ticket 11 EUR retour.",
+  "reservation": "Nein, Check-in mind. 15 Min vorher (Rostock 30)",
+  "restrictions": "Add-on nur auf Fußgänger-Tagesticket. Helsingør-Helsingborg nicht auf den Seiten.",
+  "sourceUrl": "https://www.scandlines.com/prices/puttgarden-rodby/bicycle-add-on/",
+  "checkedDate": "2026-11-04"
+ }
+]
