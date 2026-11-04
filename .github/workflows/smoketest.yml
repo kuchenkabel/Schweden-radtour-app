@@ -1,0 +1,62 @@
+name: Emulator-Test
+
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Android-APK"]
+    types: [completed]
+
+jobs:
+  emulator:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: KVM aktivieren
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: APK und Kartenpaket laden
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download apk-latest -p schweden-radtour.apk
+          gh release download tiles-latest -p halland.pmtiles
+          python3 scripts/smoketest_prefs.py $(stat -c %s halland.pmtiles) > CapacitorStorage.xml
+          head -c 400 CapacitorStorage.xml
+      - name: Im Emulator starten
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: |
+            adb install -r schweden-radtour.apk
+            adb shell pm grant de.familie.schwedenradtour android.permission.ACCESS_FINE_LOCATION || true
+            adb shell pm grant de.familie.schwedenradtour android.permission.POST_NOTIFICATIONS || true
+            adb shell am start -W -n de.familie.schwedenradtour/.MainActivity && sleep 8 && adb shell am force-stop de.familie.schwedenradtour
+            adb push halland.pmtiles /data/local/tmp/halland.pmtiles
+            adb push CapacitorStorage.xml /data/local/tmp/CapacitorStorage.xml
+            adb shell "run-as de.familie.schwedenradtour mkdir -p files/tiles shared_prefs"
+            adb shell "run-as de.familie.schwedenradtour cp /data/local/tmp/halland.pmtiles files/tiles/halland.pmtiles"
+            adb shell "run-as de.familie.schwedenradtour cp /data/local/tmp/CapacitorStorage.xml shared_prefs/CapacitorStorage.xml"
+            adb shell "run-as de.familie.schwedenradtour ls -la files/tiles shared_prefs"
+            adb logcat -c
+            adb shell am start -W -n de.familie.schwedenradtour/.MainActivity
+            sleep 25
+            adb exec-out screencap -p > shot-unterwegs.png
+            adb shell input tap 80 2280 || true
+            sleep 6
+            adb exec-out screencap -p > shot-planen.png
+            adb logcat -d | grep -iE "Capacitor/Console|chromium|pmtiles|AndroidRuntime" > logcat.txt || true
+            tail -80 logcat.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: emulator-test
+          path: |
+            shot-*.png
+            logcat.txt

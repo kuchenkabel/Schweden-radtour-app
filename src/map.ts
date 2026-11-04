@@ -16,6 +16,7 @@ maplibregl.addProtocol("pmtiles", protocol.tile);
 
 /** Liest eine lokale PMTiles-Datei über HTTP-Range-Anfragen an den WebView-Server. */
 class LocalFileSource implements Source {
+  private logged = false;
   constructor(private url: string, private key: string) {}
   getKey() { return this.key; }
   async getBytes(offset: number, length: number, signal?: AbortSignal): Promise<RangeResponse> {
@@ -23,6 +24,10 @@ class LocalFileSource implements Source {
     const buf = await res.arrayBuffer();
     // Falls der Server Range ignoriert (200 statt 206), selbst ausschneiden
     const data = res.status === 206 ? buf : buf.slice(offset, offset + length);
+    if (!this.logged) {
+      this.logged = true;
+      console.log(`[pmtiles] lokale Datei: HTTP ${res.status}, ${buf.byteLength} Bytes für ${length} angefragt`);
+    }
     return { data };
   }
 }
