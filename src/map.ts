@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?url";
 import { layers, namedFlavor } from "@protomaps/basemaps";
 import { PMTiles, Protocol, type RangeResponse, type Source } from "pmtiles";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import type { LonLat } from "./geo";
 import { CAT_INFO, type Cat, type Poi } from "./pois";
 import type { Stage } from "./stages";
@@ -14,27 +14,28 @@ maplibregl.setWorkerUrl(new URL(workerUrl, location.href).href);
 const protocol = new Protocol();
 maplibregl.addProtocol("pmtiles", protocol.tile);
 
-/** Liest eine lokale PMTiles-Datei über HTTP-Range-Anfragen an den WebView-Server. */
+interface FileRangePlugin {
+  read(o: { path: string; offset: number; length: number }): Promise<{ data: string }>;
+  close(): Promise<void>;
+}
+const FileRange = registerPlugin<FileRangePlugin>("FileRange");
+
+/** Liest Byte-Bereiche einer lokalen PMTiles-Datei über ein kleines natives Plugin. */
 class LocalFileSource implements Source {
-  private logged = false;
-  constructor(private url: string, private key: string) {}
+  constructor(private path: string, private key: string) {}
   getKey() { return this.key; }
-  async getBytes(offset: number, length: number, signal?: AbortSignal): Promise<RangeResponse> {
-    const res = await fetch(this.url, { headers: { Range: `bytes=${offset}-${offset + length - 1}` }, signal });
-    const buf = await res.arrayBuffer();
-    // Falls der Server Range ignoriert (200 statt 206), selbst ausschneiden
-    const data = res.status === 206 ? buf : buf.slice(offset, offset + length);
-    if (!this.logged) {
-      this.logged = true;
-      console.log(`[pmtiles] lokale Datei: HTTP ${res.status}, ${buf.byteLength} Bytes für ${length} angefragt`);
-    }
-    return { data };
+  async getBytes(offset: number, length: number): Promise<RangeResponse> {
+    const { data } = await FileRange.read({ path: this.path, offset, length });
+    const bin = atob(data);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return { data: out.buffer };
   }
 }
 
 export function offlineStyle(fileUri: string, key: string): StyleSpecification {
-  const url = Capacitor.isNativePlatform() ? Capacitor.convertFileSrc(fileUri) : fileUri;
-  protocol.add(new PMTiles(new LocalFileSource(url, key)));
+  // Im Browser (Entwicklung) per URL, in der App über das native Plugin
+  protocol.add(new PMTiles(Capacitor.isNativePlatform() ? new LocalFileSource(fileUri, key) : fileUri));
   return {
     version: 8,
     glyphs: "fonts/{fontstack}/{range}.pbf",
@@ -185,6 +186,8 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
   }
 
   map.on("style.load", ensureLayers);
+  map.on("error", (e: any) => console.log(`[map] Fehler: ${e?.error?.message ?? e}`));
+  map.on("idle", () => console.log(`[map] bereit, Zoom ${map.getZoom().toFixed(1)}`));
   map.on("click", "pois", (e: any) => {
     const id = e.features?.[0]?.properties?.id;
     const p = id !== undefined ? poiById.get(Number(id)) : undefined;

@@ -6,6 +6,9 @@ on:
     workflows: ["Android-APK"]
     types: [completed]
 
+permissions:
+  contents: write
+
 jobs:
   emulator:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
@@ -60,3 +63,10 @@ jobs:
           path: |
             shot-*.png
             logcat.txt
+      - name: Ergebnisse als Release "test-results" ablegen
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view test-results >/dev/null 2>&1 || gh release create test-results --title "Emulator-Testergebnisse" --notes "Automatische Screenshots aus dem Emulator-Test." --prerelease
+          gh release upload test-results shot-*.png logcat.txt --clobber || true
