@@ -140,9 +140,10 @@ export function poisAlongRoute(
 }
 
 /** Lädt die POI-Datei (gzip) aus dem App-Paket. */
-export async function loadPois(url = "data/pois-sweden.json.gz"): Promise<PoiIndex> {
+export async function loadPois(url = "data/pois-sweden.bin"): Promise<PoiIndex> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`POI-Datei nicht gefunden (${res.status})`);
+  console.log(`[pois] ${url} geladen`);
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);
   let text: string;

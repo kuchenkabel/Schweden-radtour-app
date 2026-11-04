@@ -51,10 +51,10 @@ jobs:
             adb shell am start -W -n de.familie.schwedenradtour/.MainActivity
             sleep 25
             adb exec-out screencap -p > shot-unterwegs.png
-            adb shell input tap 80 2280 || true
+            S=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1); W=${S%x*}; H=${S#*x}; adb shell input tap $((W / 10)) $((H - H / 30))
             sleep 6
             adb exec-out screencap -p > shot-planen.png
-            adb logcat -d | grep -iE "Capacitor/Console|chromium|pmtiles|AndroidRuntime" > logcat.txt || true
+            adb logcat -d | grep -iE "Capacitor/Console|pmtiles|AndroidRuntime" > logcat.txt || true
             tail -80 logcat.txt
       - uses: actions/upload-artifact@v4
         if: always()

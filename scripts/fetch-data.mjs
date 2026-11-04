@@ -1,3 +1,4 @@
+// Hinweis: Android (aapt) entfernt die Endung .gz aus App-Assets, daher .bin.
 // Lädt Datenpaket (POIs) und Kartenschriften nach public/, bevor die App gebaut wird.
 // Aufruf: node scripts/fetch-data.mjs   (GITHUB_TOKEN optional, nötig bei privatem Repo)
 import { mkdir, writeFile, access } from "node:fs/promises";
@@ -24,7 +25,7 @@ if (process.env.SKIP_POIS !== "1") {
   const asset = rel.assets.find((a) => a.name === "pois-sweden.json.gz");
   if (!asset) throw new Error("pois-sweden.json.gz fehlt im Release data-latest");
   const buf = await get(asset.url, { ...auth, Accept: "application/octet-stream" });
-  await writeFile("public/data/pois-sweden.json.gz", buf);
+  await writeFile("public/data/pois-sweden.bin", buf);
   console.log(`POIs: ${(buf.length / 1e6).toFixed(2)} MB`);
 }
 

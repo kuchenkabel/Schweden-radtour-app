@@ -890,8 +890,10 @@ async function init() {
     S.busy = "";
   } catch (e) {
     S.busy = `Ortsdaten fehlen: ${(e as Error).message}`;
+    console.log(`[pois] Fehler: ${(e as Error).message}`);
   }
   recompute();
+  console.log(`[app] ${S.index?.all.length ?? 0} Orte, ${S.stages.length} Etappen`);
   if (S.plan.line.length > 1) mv.fit(bboxOf(S.plan.line));
   render();
   startGps();
