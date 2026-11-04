@@ -30,7 +30,7 @@ if (process.env.SKIP_POIS !== "1") {
 }
 
 for (const font of FONTS) {
-  const dir = `public/fonts/${font}`;
+  const dir = `public/fonts/${font.replace(/ /g, "_")}`;
   await mkdir(dir, { recursive: true });
   for (const r of RANGES) {
     const file = `${dir}/${r}.pbf`;

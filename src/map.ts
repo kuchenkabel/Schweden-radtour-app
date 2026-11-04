@@ -79,6 +79,8 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     center: [14.5, 58.5],
     zoom: 5,
     attributionControl: { compact: true },
+    // Schrift-Ordner ohne Leerzeichen (der App-Server mag keine %20 in Pfaden)
+    transformRequest: (url) => (url.startsWith(location.origin) && url.includes("/fonts/") ? { url: url.replace(/(%20|\s)/g, "_") } : { url }),
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-left");
