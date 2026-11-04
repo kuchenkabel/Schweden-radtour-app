@@ -757,7 +757,7 @@ function bindNotfall() {
 function renderMehr(): string {
   const packFor = (r: Region) => S.packs.find((p) => p.region === r.id);
   return `<h2>Offline-Karten</h2>
-    <p class="muted">Vor der Abfahrt im WLAN laden. Ein Paket pro Region, je etwa 100–500 MB. Orte, Etappen und Listen funktionieren auch ohne Kartenpaket offline.</p>
+    <p class="muted">Vor der Abfahrt im WLAN laden. Ein Paket pro Region, je etwa 30–150 MB. Orte, Etappen und Listen funktionieren auch ohne Kartenpaket offline.</p>
     <div class="card">${REGIONS.map((r) => {
       const p = packFor(r);
       return `<div class="list-item"><div class="main"><b>${esc(r.name)}</b><div class="muted">${p ? `geladen ${esc(p.date)} · ${(p.bytes / 1e6).toFixed(0)} MB` : "nicht geladen"}</div><div class="progress" id="prog-${r.id}"></div></div>

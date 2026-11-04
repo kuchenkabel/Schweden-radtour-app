@@ -26,7 +26,6 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
-      - uses: android-actions/setup-android@v3
       - name: Abhängigkeiten
         run: npm ci
       - name: Tests
