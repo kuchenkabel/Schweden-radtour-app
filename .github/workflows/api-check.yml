@@ -11,14 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: SMHI snow1g
-        run: curl -sS "https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/13.0/lat/55.6/data.json" | head -c 1500; echo
+        run: |
+          curl -sS "https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/13.0/lat/55.6/data.json" | head -c 1500; echo
       - name: SMHI pmp3g
-        run: curl -sS -o /dev/null -w "%{http_code}\n" "https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/point/lon/13.0/lat/55.6/data.json"
+        run: |
+          curl -sS -o /dev/null -w "%{http_code}\n" "https://opendata-download-metfcst.smhi.se/api/category/pmp3g/version/2/geotype/point/lon/13.0/lat/55.6/data.json"
       - name: SMHI Brandrisk fwif1g
-        run: curl -sS "https://opendata-download-metfcst.smhi.se/api/category/fwif1g/version/1/daily/geotype/point/lon/13.0/lat/55.6/data.json" | head -c 1200; echo
+        run: |
+          curl -sS "https://opendata-download-metfcst.smhi.se/api/category/fwif1g/version/1/daily/geotype/point/lon/13.0/lat/55.6/data.json" | head -c 1200; echo
       - name: BRouter
-        run: curl -sS -D - "https://brouter.de/brouter?lonlats=12.85,56.67|12.69,56.89&profile=trekking&alternativeidx=0&format=geojson" -H "Origin: https://localhost" | head -c 1500; echo
+        run: |
+          curl -sS -D - "https://brouter.de/brouter?lonlats=12.85,56.67|12.69,56.89&profile=trekking&alternativeidx=0&format=geojson" -H "Origin: https://localhost" | head -c 1500; echo
       - name: OpenFreeMap
-        run: curl -sS -D - -o /dev/null "https://tiles.openfreemap.org/styles/liberty" -H "Origin: https://localhost"
+        run: |
+          curl -sS -D - -o /dev/null "https://tiles.openfreemap.org/styles/liberty" -H "Origin: https://localhost"
       - name: Protomaps builds
-        run: curl -sS "https://build-metadata.protomaps.dev/builds.json" | tail -c 600; echo
+        run: |
+          curl -sS "https://build-metadata.protomaps.dev/builds.json" | tail -c 600; echo
