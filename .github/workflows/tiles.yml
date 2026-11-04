@@ -1,0 +1,54 @@
+name: Offline-Kartenpakete
+
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: "Regionen (Komma-getrennt, leer = alle)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  tiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - name: pmtiles-CLI laden
+        run: |
+          curl -sSfL -o pm.tar.gz https://github.com/protomaps/go-pmtiles/releases/download/v1.28.0/go-pmtiles_1.28.0_Linux_x86_64.tar.gz
+          tar xzf pm.tar.gz pmtiles && ./pmtiles version
+      - name: Neuesten Protomaps-Build finden
+        run: |
+          KEY=$(curl -sSf https://build-metadata.protomaps.dev/builds.json | python3 -c "import json,sys;print(json.load(sys.stdin)[-1]['key'])")
+          echo "BUILD=https://build.protomaps.com/$KEY" >> "$GITHUB_ENV"
+          echo "Build: $KEY"
+      - name: Regionen ausschneiden
+        env:
+          WANT: ${{ inputs.regions }}
+        run: |
+          python3 - <<'PY' > regions.txt
+          import os, re
+          src = open("src/regions.ts", encoding="utf-8").read()
+          want = {w.strip() for w in os.environ.get("WANT", "").split(",") if w.strip()}
+          for m in re.finditer(r'id: "([a-z]+)", name: "[^"]+", bbox: \[([^\]]+)\]', src):
+              rid, bbox = m.group(1), m.group(2).replace(" ", "")
+              if not want or rid in want:
+                  print(rid, bbox)
+          PY
+          cat regions.txt
+          mkdir -p out
+          while read -r id bbox; do
+            ./pmtiles extract "$BUILD" "out/$id.pmtiles" --bbox="$bbox" --maxzoom=14 --download-threads=8
+            ls -lh "out/$id.pmtiles"
+          done < regions.txt
+      - name: Als Release "tiles-latest" veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view tiles-latest >/dev/null 2>&1 || \
+            gh release create tiles-latest --title "Offline-Kartenpakete" --notes "Kartenpakete je Region (Protomaps, © OpenStreetMap-Mitwirkende). Lädt die App selbst." --prerelease
+          for f in out/*.pmtiles; do gh release upload tiles-latest "$f" --clobber; done

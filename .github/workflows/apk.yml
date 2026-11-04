@@ -1,0 +1,75 @@
+name: Android-APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**.md", ".github/workflows/data.yml", ".github/workflows/tiles.yml", ".github/workflows/api-check.yml", "scripts/build_pois.py"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: android-actions/setup-android@v3
+      - name: Abhängigkeiten
+        run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Daten und Schriften laden
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run fetch-data
+      - name: Web-App bauen
+        run: npm run build
+      - name: Capacitor sync
+        run: npx cap sync android
+      - name: Signierschlüssel
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Kein KEYSTORE_B64-Secret: APK wird mit Debug-Schlüssel signiert"
+          fi
+      - name: APK bauen
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 0.1.${{ github.run_number }}
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          if [ -n "$KEYSTORE_PATH" ]; then ./gradlew assembleRelease --no-daemon; else ./gradlew assembleDebug --no-daemon; fi
+          mkdir -p ../out
+          cp $(find app/build/outputs/apk -name "*.apk" | head -1) ../out/schweden-radtour.apk
+          ls -lh ../out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: schweden-radtour-apk
+          path: out/schweden-radtour.apk
+      - name: Als Release "apk-latest" veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view apk-latest >/dev/null 2>&1 || \
+            gh release create apk-latest --title "Android-App (neueste Version)" --notes "Auf dem Handy herunterladen und installieren." --prerelease
+          gh release upload apk-latest out/schweden-radtour.apk --clobber
+          gh release edit apk-latest --notes "Version 0.1.${{ github.run_number }} vom $(date +%d.%m.%Y). Auf dem Handy herunterladen und installieren."

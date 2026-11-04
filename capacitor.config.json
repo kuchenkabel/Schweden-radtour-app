@@ -1,0 +1,10 @@
+{
+  "appId": "de.familie.schwedenradtour",
+  "appName": "Schweden-Radtour",
+  "webDir": "dist",
+  "plugins": {
+    "LocalNotifications": {
+      "iconColor": "#005b99"
+    }
+  }
+}

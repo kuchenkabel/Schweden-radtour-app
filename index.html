@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#005b99" />
+    <title>Schweden-Radtour</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="top"><span id="title">Schweden-Radtour</span><span id="net"></span></header>
+      <div id="map"></div>
+      <main id="panel"></main>
+      <nav id="tabs">
+        <button data-tab="planen">🗺️<span>Planen</span></button>
+        <button data-tab="unterwegs">🚲<span>Unterwegs</span></button>
+        <button data-tab="listen">✅<span>Listen</span></button>
+        <button data-tab="notfall">🆘<span>Notfall</span></button>
+        <button data-tab="mehr">☰<span>Mehr</span></button>
+      </nav>
+    </div>
+    <div id="sheet" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
