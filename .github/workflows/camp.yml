@@ -35,7 +35,7 @@ jobs:
       - name: Werkzeuge installieren
         run: |
           sudo apt-get update && sudo apt-get install -y osmium-tool gdal-bin
-          pip install numpy scipy rasterio shapely pyproj
+          pip install numpy scipy rasterio shapely pyproj fabdem
       - name: Regionen lesen
         env:
           # Bei Pull Requests nur eine kleine Region als Test
@@ -60,7 +60,7 @@ jobs:
           TIF=$(find nmd -iname '*.tif' | head -1)
           gdalinfo "$TIF" | head -30
           echo "NMD=$TIF" >> "$GITHUB_ENV"
-      - name: Höhenmodell (Copernicus GLO-30) laden
+      - name: Höhenmodell (Copernicus GLO-30, Ersatz falls FABDEM fehlt) laden
         run: |
           mkdir -p dem
           python3 - <<'PY' > dem-tiles.txt
@@ -99,9 +99,18 @@ jobs:
             ext=$(python3 -c "print(f'{$w-0.15},{$s-0.1},{$e+0.15},{$n+0.1}')")
             osmium extract -s smart -b "$ext" filtered.osm.pbf -o "r-$id.osm.pbf" --overwrite
             osmium export "r-$id.osm.pbf" -f geojsonseq -o "r-$id.geojsonseq" --overwrite
-            python3 scripts/build_camp.py region --bbox "$bbox" --nmd "$NMD" --dem dem.vrt \
+            # FABDEM (Univ. Bristol, CC BY-NC-SA 4.0): ohne Bäume/Gebäude, sonst wirken Waldränder wie Hänge
+            DEMF=dem.vrt
+            if python3 -c "import fabdem; w,s,e,n=$ext; fabdem.download((w-0.05,s-0.05,e+0.05,n+0.05), output_path='dem-$id.tif', cache='fabdem-cache', show_progress=False)"; then
+              DEMF="dem-$id.tif"
+            else
+              echo "::warning::FABDEM für $id nicht geladen, nehme Copernicus"
+            fi
+            echo "Höhenmodell: $DEMF"
+            python3 scripts/build_camp.py region --bbox "$bbox" --nmd "$NMD" --dem "$DEMF" \
               --osm "r-$id.geojsonseq" --out "out/$id.json" --grid "grids/eignung-$id.bin"
-            rm "r-$id.osm.pbf" "r-$id.geojsonseq"
+            rm -f "r-$id.osm.pbf" "r-$id.geojsonseq" "dem-$id.tif"
+            df -h . | tail -1
             echo "::endgroup::"
           done < regions.txt
       - name: Zusammenführen

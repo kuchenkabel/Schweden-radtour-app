@@ -4,7 +4,8 @@
 Datenquellen (alle offen, ohne Anmeldung):
   * Nationella Marktäckedata 2023 (NMD, Naturvårdsverket, CC0), 10-m-Raster in SWEREF 99 TM.
     Liefert Untergrund (Wald auf festem Boden, Moor, Acker, Fels), Wasser und Gebäude.
-  * Copernicus DEM GLO-30 (ESA), Höhenmodell 30 m, für die Hangneigung.
+  * FABDEM (Univ. Bristol, CC BY-NC-SA 4.0): Copernicus GLO-30 ohne Bäume und Gebäude, 30 m, für die
+    Hangneigung (ersatzweise Copernicus GLO-30, das die Baumkronen mitmisst).
   * OpenStreetMap: Wege (Zufahrt), Straßen (Abstand), Nutzflächen und Schutzgebiete.
 
 Regeln (Faustregeln zum Jedermannsrecht, bewusst vorsichtig):
@@ -386,7 +387,7 @@ def cmd_merge(a):
     out = {
         "v": 1,
         "generated": datetime.date.today().isoformat(),
-        "source": "NMD Naturvårdsverket (CC0), Copernicus DEM GLO-30 (© DLR/Airbus, ESA), © OpenStreetMap-Mitwirkende (ODbL)",
+        "source": "NMD Naturvårdsverket (CC0), FABDEM (Univ. Bristol, CC BY-NC-SA 4.0) auf Basis Copernicus DEM GLO-30 (© DLR/Airbus, ESA), © OpenStreetMap-Mitwirkende (ODbL)",
         "fields": ["lat", "lon", "score", "house", "slope10", "water", "access", "ground", "res"],
         "pts": pts,
     }
