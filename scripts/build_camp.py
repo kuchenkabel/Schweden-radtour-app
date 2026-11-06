@@ -19,12 +19,22 @@ Pro 1-km-Zelle wird höchstens der beste Punkt behalten.
 Aufrufe:
   build_camp.py region --bbox W,S,E,N --nmd nmd.tif --dem dem.vrt --osm region.geojsonseq --out region.json
   build_camp.py merge --out camp-sweden.json region1.json region2.json ...
+
+Mit --grid schreibt "region" zusätzlich eine Eignungskarte (50-m-Raster in WGS84) für
+"Punkt prüfen" in der App. Format (eignung-<id>.bin):
+  b"EIG1", uint32 LE Header-Länge, Header-JSON {"w","n","dlon","dlat","nx","ny","cell","v"},
+  danach zlib-komprimiert ny*nx uint16 LE, Zeile 0 = Norden. Bits je Zelle (GRID_BITS):
+  0-2 Untergrund, 3-5 Hausabstand, 6-7 Neigung, 8-9 Weg, 10-11 Wasser,
+  12 Schutzgebiet, 13 Nutzfläche/Moor/Acker zu nah, 14 große Straße < 150 m, 15 alle Regeln erfüllt.
 """
 import argparse
 import datetime
 import json
+import math
 import multiprocessing as mp
+import struct
 import sys
+import zlib
 
 import numpy as np
 import rasterio
@@ -141,6 +151,81 @@ def dist(mask):
         return np.full(mask.shape, float(FAR), np.float32)
     return (ndimage.distance_transform_edt(~mask) * RES).astype(np.float32)
 
+GRID_CELL = 50  # Meter
+
+
+def bucket(v, edges):
+    """Index des ersten Grenzwerts, der größer ist (np.digitize)."""
+    return np.digitize(v, edges).astype(np.uint16)
+
+
+def encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable, excl, res, d_major, cand):
+    g = np.full(nmd.shape, 7, np.uint16)  # 7 = bebaut/Fels/Kahlschlag/sonstiges
+    g[np.isin(nmd, WATER + [0])] = 0
+    g[nmd == 111] = 1
+    g[np.isin(nmd, [112, 113, 114])] = 2
+    g[np.isin(nmd, [115, 116, 117])] = 3
+    g[nmd == OPEN_VEG] = 4
+    g[np.isin(nmd, WET)] = 5
+    g[np.isin(nmd, ARABLE)] = 6
+    house = bucket(d_house, [50, 100, 150, 200, 300, 500, 1000])
+    slp = bucket(slope, [3, 6, 10])
+    way = np.where(d_road < MIN_ACCESS, 0, np.where(d_acc <= 120, 1, np.where(d_acc <= MAX_ACCESS, 2, 3))).astype(np.uint16)
+    wat = bucket(d_water, [MIN_WATER, 150, 400])
+    near_bad = excl | (d_wet < MIN_WET) | (d_arable < MIN_ARABLE)
+    return (g | house << 3 | slp << 6 | way << 8 | wat << 10 | res.astype(np.uint16) << 12
+            | near_bad.astype(np.uint16) << 13 | (d_major < MIN_MAJOR).astype(np.uint16) << 14
+            | cand.astype(np.uint16) << 15)
+
+
+def sample_grid(code, score, bx0, by1, x0, y0, b):
+    """Rasterzellen (WGS84-Gitter der Region), deren Mitte im inneren Kachelbereich liegt.
+
+    Je Zelle wird im 5x5-Fenster (50 m) das Pixel mit der besten Bewertung genommen.
+    """
+    gw, gn, dlon, dlat = G["grid"]
+    to4326, to3006 = G["to4326"], G["to3006"]
+    lons, lats = to4326.transform([x0, x0, x0 + TILE, x0 + TILE], [y0, y0 + TILE, y0, y0 + TILE])
+    j0, j1 = int((min(lons) - gw) / dlon) - 1, int((max(lons) - gw) / dlon) + 2
+    i0, i1 = int((gn - max(lats)) / dlat) - 1, int((gn - min(lats)) / dlat) + 2
+    j0, i0 = max(j0, 0), max(i0, 0)
+    if j1 <= j0 or i1 <= i0:
+        return None
+    jj, ii = np.meshgrid(np.arange(j0, j1), np.arange(i0, i1))
+    clon = gw + (jj + 0.5) * dlon
+    clat = gn - (ii + 0.5) * dlat
+    x, y = to3006.transform(clon.ravel(), clat.ravel())
+    x, y = np.asarray(x), np.asarray(y)
+    inside = (x >= x0) & (x < x0 + TILE) & (y >= y0) & (y < y0 + TILE)
+    if not inside.any():
+        return None
+    x, y = x[inside], y[inside]
+    c = ((x - bx0) / RES).astype(int)
+    r = ((by1 - y) / RES).astype(int)
+    best_s = np.full(len(r), -1e9)
+    best_c = np.zeros(len(r), np.uint16)
+    for dy in range(-2, 3):
+        for dx in range(-2, 3):
+            rr, cc = r + dy, c + dx
+            sv = score[rr, cc]
+            take = sv > best_s
+            best_s = np.where(take, sv, best_s)
+            best_c = np.where(take, code[rr, cc], best_c)
+    # ohne Kandidat im Fenster: Mittelpixel (zeigt den Grund am Punkt selbst)
+    none = best_s < 0
+    best_c[none] = code[r[none], c[none]]
+    return ii.ravel()[inside].astype(np.int32), jj.ravel()[inside].astype(np.int32), best_c
+
+
+def write_grid(path, grid, gw, gn, dlon, dlat):
+    ny, nx = grid.shape
+    header = json.dumps({"v": 1, "w": gw, "n": gn, "dlon": dlon, "dlat": dlat, "nx": nx, "ny": ny,
+                         "cell": GRID_CELL}).encode()
+    with open(path, "wb") as f:
+        f.write(b"EIG1" + struct.pack("<I", len(header)) + header)
+        f.write(zlib.compress(grid.astype("<u2").tobytes(), 9))
+
+
 
 G = {}
 
@@ -158,7 +243,7 @@ def process_tile(origin):
     inner = nmd[b:-b, b:-b]
     land = ~np.isin(inner, WATER + [0])
     if land.mean() < 0.05:
-        return []
+        return [], None
     with WarpedVRT(G["dem"], crs="EPSG:3006", transform=tr, width=W, height=H,
                    resampling=Resampling.bilinear) as vrt:
         dem = vrt.read(1).astype(np.float32)
@@ -203,6 +288,13 @@ def process_tile(origin):
     score = 35 * s_house + 20 * s_slope + 15 * s_water + 15 * s_acc + 15 * ground_q - 10 * res
     score = np.where(cand, score, -1)
 
+    if G.get("grid"):
+        code = encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable,
+                            excl, res, d_major, cand)
+        samples = sample_grid(code, score, bx0, by1, x0, y0, b)
+    else:
+        samples = None
+
     sc = score[b:-b, b:-b]
     n = TILE // CELL
     k = CELL // int(RES)
@@ -228,14 +320,16 @@ def process_tile(origin):
                 int(min(d_house[r, c], FAR)), int(round(slope[r, c] * 10)),
                 dw if dw <= 2000 else FAR, int(d_acc[r, c]), int(nmd[r, c]), int(res[r, c]),
             ])
-    return out
+    return out, samples
 
 
-def init_worker(nmd_path, dem_path, osm):
+def init_worker(nmd_path, dem_path, osm, grid=None):
     G["nmd"] = rasterio.open(nmd_path)
     G["dem"] = rasterio.open(dem_path)
     G["osm"] = osm
+    G["grid"] = grid
     G["to4326"] = Transformer.from_crs("EPSG:3006", "EPSG:4326", always_xy=True)
+    G["to3006"] = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
 
 
 def cmd_region(a):
@@ -250,12 +344,24 @@ def cmd_region(a):
     osm = load_osm(a.osm, (x0 - BUF, y0 - BUF, x1 + BUF, y1 + BUF))
     origins = [(x, y) for x in range(x0, x1, TILE) for y in range(y0, y1, TILE)]
     print(f"  {len(origins)} Kacheln", file=sys.stderr)
-    init_worker(a.nmd, a.dem, osm)  # für fork: Daten im Elternprozess vorbereiten
+    grid_def, grid = None, None
+    if a.grid:
+        dlat = GRID_CELL / 111_320
+        dlon = GRID_CELL / (111_320 * math.cos(math.radians((s + n) / 2)))
+        nx, ny = math.ceil((e - w) / dlon), math.ceil((n - s) / dlat)
+        grid_def = (w, n, dlon, dlat)
+        grid = np.zeros((ny, nx), np.uint16)  # 0 = Wasser/keine Daten
+        print(f"  Eignungskarte {nx} x {ny} Zellen", file=sys.stderr)
+    init_worker(a.nmd, a.dem, osm, grid_def)  # für fork: Daten im Elternprozess vorbereiten
     pts = []
     ctx = mp.get_context("fork")
-    with ctx.Pool(a.jobs, initializer=init_worker, initargs=(a.nmd, a.dem, osm)) as pool:
-        for i, res in enumerate(pool.imap_unordered(process_tile, origins, chunksize=2)):
+    with ctx.Pool(a.jobs, initializer=init_worker, initargs=(a.nmd, a.dem, osm, grid_def)) as pool:
+        for i, (res, samples) in enumerate(pool.imap_unordered(process_tile, origins, chunksize=2)):
             pts.extend(res)
+            if samples is not None and grid is not None:
+                si, sj, sc = samples
+                ok = (si < grid.shape[0]) & (sj < grid.shape[1])
+                grid[si[ok], sj[ok]] = sc[ok]
             if i % 50 == 0:
                 print(f"  {i}/{len(origins)} Kacheln, {len(pts)} Punkte", file=sys.stderr)
     # nur Punkte innerhalb der Region (Kacheln ragen über die Box hinaus)
@@ -263,6 +369,11 @@ def cmd_region(a):
     with open(a.out, "w") as f:
         json.dump(pts, f, separators=(",", ":"))
     print(f"  {len(pts)} Kandidaten", file=sys.stderr)
+    if grid is not None:
+        write_grid(a.grid, grid, *grid_def)
+        import os
+        print(f"  Eignungskarte {a.grid}: {os.path.getsize(a.grid) / 1e6:.1f} MB, "
+              f"{int((grid >> 15).sum())} geeignete Zellen", file=sys.stderr)
 
 
 def cmd_merge(a):
@@ -293,6 +404,7 @@ def main():
     r.add_argument("--dem", required=True)
     r.add_argument("--osm", required=True)
     r.add_argument("--out", required=True)
+    r.add_argument("--grid", help="Eignungskarte schreiben (eignung-<id>.bin)")
     r.add_argument("--jobs", type=int, default=mp.cpu_count())
     m = sub.add_parser("merge")
     m.add_argument("--out", required=True)
