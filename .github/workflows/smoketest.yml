@@ -43,10 +43,10 @@ jobs:
             adb shell am start -W -n de.familie.schwedenradtour/.MainActivity && sleep 8 && adb shell am force-stop de.familie.schwedenradtour
             adb push halland.pmtiles /data/local/tmp/halland.pmtiles
             adb push CapacitorStorage.xml /data/local/tmp/CapacitorStorage.xml
-            adb shell "run-as de.familie.schwedenradtour mkdir -p files/tiles shared_prefs"
-            adb shell "run-as de.familie.schwedenradtour cp /data/local/tmp/halland.pmtiles files/tiles/halland.pmtiles"
+            adb shell "run-as de.familie.schwedenradtour mkdir -p files/test shared_prefs"
+            adb shell "run-as de.familie.schwedenradtour cp /data/local/tmp/halland.pmtiles files/test/halland.pmtiles"
             adb shell "run-as de.familie.schwedenradtour cp /data/local/tmp/CapacitorStorage.xml shared_prefs/CapacitorStorage.xml"
-            adb shell "run-as de.familie.schwedenradtour ls -la files/tiles shared_prefs"
+            adb shell "run-as de.familie.schwedenradtour ls -la files shared_prefs"
             adb logcat -c
             adb shell am start -W -n de.familie.schwedenradtour/.MainActivity
             sleep 25
@@ -55,7 +55,12 @@ jobs:
             sleep 6
             adb exec-out screencap -p > shot-planen.png
             adb logcat -d | grep -iE "Capacitor/Console|pmtiles|AndroidRuntime" > logcat.txt || true
+            for i in $(seq 1 36); do adb logcat -d | grep -q "\[selftest\]" && break; sleep 5; done
+            adb logcat -d | grep -iE "Capacitor/Console|pmtiles|AndroidRuntime" > logcat.txt || true
+            adb shell "run-as de.familie.schwedenradtour ls -la files/tiles files/eignung" >> logcat.txt 2>&1 || true
             tail -80 logcat.txt
+      - name: Selbsttest Download prüfen
+        run: grep "\[selftest\] OK" logcat.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

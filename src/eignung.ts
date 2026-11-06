@@ -212,6 +212,7 @@ async function readLocal(id: string): Promise<ArrayBuffer | null> {
 
 export async function downloadEignung(id: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return;
+  try { await Filesystem.mkdir({ path: "eignung", directory: Directory.Data, recursive: true }); } catch { /* existiert schon */ }
   await Filesystem.downloadFile({ url: eignungUrl(id), path: eignungPath(id), directory: Directory.Data, recursive: true });
 }
 

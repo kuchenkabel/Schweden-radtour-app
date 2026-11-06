@@ -16,6 +16,15 @@ export interface TilePack {
 
 export const listPacks = () => load<TilePack[]>("tilePacks", []);
 
+/** Legt einen Ordner in Directory.Data an. downloadFile macht das auf Android nicht selbst (ENOENT). */
+export async function ensureDir(path: string): Promise<void> {
+  try {
+    await Filesystem.mkdir({ path, directory: Directory.Data, recursive: true });
+  } catch {
+    /* existiert schon */
+  }
+}
+
 export async function downloadPack(region: string, onProgress: (pct: number, mb: number) => void): Promise<TilePack> {
   if (!Capacitor.isNativePlatform()) throw new Error("Offline-Karten gibt es nur in der Android-App");
   const path = `tiles/${region}.pmtiles`;
@@ -23,6 +32,7 @@ export async function downloadPack(region: string, onProgress: (pct: number, mb:
     if (p.contentLength > 0) onProgress(Math.round((p.bytes / p.contentLength) * 100), p.bytes / 1e6);
     else onProgress(-1, p.bytes / 1e6);
   });
+  await ensureDir("tiles");
   try {
     await Filesystem.downloadFile({
       url: `${TILES_BASE}/${region}.pmtiles`,
@@ -40,7 +50,7 @@ export async function downloadPack(region: string, onProgress: (pct: number, mb:
   packs.push(pack);
   await save("tilePacks", packs);
   // Eignungskarte (Wildcamping) dazuladen, Fehler sind unkritisch
-  try { await downloadEignung(region); } catch { /* optional */ }
+  try { await downloadEignung(region); } catch (e) { console.log(`[eignung] Download ${region}: ${(e as Error).message}`); }
   return pack;
 }
 
