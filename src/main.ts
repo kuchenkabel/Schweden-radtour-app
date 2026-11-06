@@ -614,18 +614,33 @@ function bindPoiClicks() {
   );
 }
 
+const SHELTER_TYPES: Record<string, string> = {
+  lean_to: "Windschutzhütte (Vindskydd)", basic_hut: "Einfache Hütte", weather_shelter: "Wetterschutz",
+  picnic_shelter: "Picknickdach", pavilion: "Pavillon",
+};
+
 function showPoi(p: Poi) {
   const rows = Object.entries(p.x)
     .map(([k, v]) => {
       const label = EXTRA_LABELS[k] ?? k;
+      if (k === "typ") v = SHELTER_TYPES[v] ?? v;
       const val = k === "web" ? `<a href="${esc(v)}" target="_blank">${esc(v)}</a>` : k === "tel" ? `<a href="tel:${esc(v.replace(/\s/g, ""))}">${esc(v)}</a>` : esc(v);
       return `<tr><th>${esc(label)}</th><td>${val}</td></tr>`;
     })
     .join("");
   const dist = S.pos ? ` · ${km(haversineKm(S.pos, [p.lon, p.lat]), 1)} Luftlinie` : "";
+  const hint =
+    p.cat === "unterstand"
+      ? `<p class="muted">In OpenStreetMap ist hier nur ein Unterstand ohne genaue Art eingetragen (oft ein Picknickdach oder Wetterschutz). Ob man darin schlafen kann, ist unsicher.</p>`
+      : p.cat === "vindskydd" && !p.x.chk
+        ? `<p class="muted">Kein Prüfdatum in OpenStreetMap. Vor dem Planen am besten im Luftbild nachsehen.</p>`
+        : "";
+  const sat = `https://www.google.com/maps/@?api=1&map_action=map&center=${p.lat},${p.lon}&zoom=19&basemap=satellite`;
   openSheet(
     `<h3>${CAT_INFO[p.cat].icon} ${esc(poiName(p))}</h3><p class="muted">${esc(CAT_INFO[p.cat].label)}${dist}</p>
+    ${hint}
     ${rows ? `<table>${rows}</table>` : `<p class="muted">Keine weiteren Angaben in OpenStreetMap.</p>`}
+    ${p.cat === "vindskydd" || p.cat === "unterstand" || p.cat === "huette" ? `<p><a href="${sat}" target="_blank">Luftbild ansehen (online)</a></p>` : ""}
     <div class="row" style="margin-top:10px"><a class="btn" href="geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(${encodeURIComponent(poiName(p))})">Navigieren</a>
     <button class="btn secondary" id="poiZoom">Auf Karte</button></div>`,
     (el) => el.querySelector("#poiZoom")!.addEventListener("click", () => {

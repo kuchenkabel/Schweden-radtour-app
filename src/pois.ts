@@ -2,7 +2,8 @@ import { cumulativeKm, haversineKm, projectOnLine, type LonLat } from "./geo";
 
 export type Cat =
   | "vindskydd" | "huette" | "camping" | "stf" | "hostel" | "badplats" | "spielplatz"
-  | "wasser" | "wc" | "supermarkt" | "radladen" | "gas" | "apotek" | "vard" | "bahnhof";
+  | "wasser" | "wc" | "supermarkt" | "radladen" | "gas" | "apotek" | "vard" | "bahnhof"
+  | "unterstand";
 
 export interface Poi {
   id: number;
@@ -29,13 +30,14 @@ export const CAT_INFO: Record<Cat, { label: string; icon: string; color: string;
   apotek: { label: "Apotek", icon: "💊", color: "#c62828" },
   vard: { label: "Vårdcentral/Klinik", icon: "🏥", color: "#d32f2f" },
   bahnhof: { label: "Bahnhof", icon: "🚆", color: "#455a64" },
+  unterstand: { label: "Unterstand (unsicher)", icon: "❔", color: "#9e9e9e" },
 };
 
 export const EXTRA_LABELS: Record<string, string> = {
   oh: "Öffnungszeiten", web: "Webseite", tel: "Telefon", op: "Betreiber", fee: "Gebühr",
   dw: "Trinkwasser", wc: "Toiletten", sh: "Dusche", wm: "Waschmaschine", res: "Reservierung",
   tent: "Zelte", cap: "Kapazität", fire: "Feuerstelle", bike: "Fahrrad", rs: "Rollstuhl",
-  desc: "Beschreibung", acc: "Zugang",
+  desc: "Beschreibung", acc: "Zugang", chk: "Zuletzt in OSM geprüft", typ: "Art (OSM)",
 };
 
 /** Einfaches Gitter-Raster für schnelle Umkreis-Abfragen (Zelle ca. 0,1° = ~6-11 km). */

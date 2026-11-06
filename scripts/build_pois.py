@@ -14,6 +14,7 @@ import sys
 CATS = [
     "vindskydd", "huette", "camping", "stf", "hostel", "badplats", "spielplatz",
     "wasser", "wc", "supermarkt", "radladen", "gas", "apotek", "vard", "bahnhof",
+    "unterstand",
 ]
 CAT_INDEX = {c: i for i, c in enumerate(CATS)}
 
@@ -24,7 +25,15 @@ EXTRA_TAGS = {
     "toilets": "wc", "shower": "sh", "washing_machine": "wm", "reservation": "res",
     "tents": "tent", "capacity": "cap", "fireplace": "fire", "bicycle": "bike",
     "wheelchair": "rs", "description": "desc", "access": "acc",
+    "check_date": "chk", "survey:date": "chk", "shelter_type": "typ",
 }
+
+# Unterstände, die nie ein Schlafplatz sind (Bushaltestelle, Viehunterstand, Umkleide ...).
+SHELTER_SKIP = {
+    "public_transport", "field_shelter", "changing_rooms", "parking", "sun_shelter",
+    "rock_shelter", "bicycle_parking", "smoking_shelter",
+}
+VINDSKYDD_WORDS = ("vindskydd", "windskydd", "slogbod", "kåta")
 
 STF_MARKERS = ("stf", "svenska turistföreningen", "svenska turistforeningen")
 
@@ -32,11 +41,7 @@ STF_MARKERS = ("stf", "svenska turistföreningen", "svenska turistforeningen")
 def classify(t):
     a = t.get("amenity")
     if a == "shelter":
-        if t.get("shelter_type") in ("lean_to", "basic_hut", "weather_shelter", None):
-            if t.get("shelter_type") is None and t.get("access") == "private":
-                return None
-            return "vindskydd"
-        return None
+        return classify_shelter(t)
     tour = t.get("tourism")
     if tour == "camp_site":
         return "camping"
@@ -72,6 +77,28 @@ def classify(t):
             return None
         return "bahnhof"
     return None
+
+
+def classify_shelter(t):
+    """Nur echte Windschutzhütten zählen als Vindskydd.
+
+    Früher zählte jeder Unterstand (auch Picknickdächer und Einträge ohne Typ);
+    bei Stichproben war dort oft keine Hütte. Unklare Fälle werden jetzt
+    "unterstand" (unsicher) und sind in der App standardmäßig ausgeblendet.
+    """
+    st = t.get("shelter_type")
+    if st in SHELTER_SKIP:
+        return None
+    if t.get("access") in ("private", "no") or t.get("disused") == "yes":
+        return None
+    if any(k.startswith(("disused:", "abandoned:", "demolished:", "razed:")) for k in t):
+        return None
+    if st in ("lean_to", "basic_hut"):
+        return "vindskydd"
+    name = (t.get("name") or t.get("name:sv") or "").lower()
+    if any(w in name for w in VINDSKYDD_WORDS):
+        return "vindskydd"
+    return "unterstand"
 
 
 def centroid(geom):
