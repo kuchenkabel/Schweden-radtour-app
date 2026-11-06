@@ -23,14 +23,20 @@ HUB = "https://hub.arcgis.com/api/v3/datasets"
 SWEDEN = (10.5, 55.0, 24.5, 69.5)
 
 
-def get(url, timeout=120):
+def get(url, timeout=45):
     req = urllib.request.Request(url, headers=UA)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
 
 def in_sweden(lon, lat):
-    return SWEDEN[0] <= lon <= SWEDEN[2] and SWEDEN[1] <= lat <= SWEDEN[3]
+    if not (SWEDEN[0] <= lon <= SWEDEN[2] and SWEDEN[1] <= lat <= SWEDEN[3]):
+        return False
+    if lat < 65.5 and lon > 21.6:  # finnische Westküste
+        return False
+    if 59.7 <= lat <= 60.6 and lon > 19.3:  # Åland
+        return False
+    return True
 
 
 def point_of(geom):
@@ -62,28 +68,32 @@ def fetch_nv():
     if not layer:
         raise RuntimeError(f"keine Anordnungs-Ebene gefunden: {names}")
     print(f"NV-Ebene: {layer}", file=sys.stderr)
-    out, start, page = [], 0, 10000
-    while True:
+    fc, errors = None, []
+    for fmt in ("application/json", "json"):
         q = urllib.parse.urlencode({
             "service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
-            "outputFormat": "application/json", "srsName": "EPSG:4326",
-            "count": page, "startIndex": start,
+            "outputFormat": fmt, "srsName": "EPSG:4326",
         })
-        fc = json.loads(get(f"{NV_WFS}?{q}", timeout=300))
-        feats = fc.get("features") or []
-        for f in feats:
-            p = f.get("properties") or {}
-            pt = point_of(f.get("geometry"))
-            if not pt or not is_vindskydd(p):
-                continue
-            lon, lat = pt
-            if not in_sweden(lon, lat):  # Achsen vertauscht?
-                lon, lat = lat, lon
-            if in_sweden(lon, lat):
-                out.append({"lat": lat, "lon": lon, "src": "nv", "name": name_of(p), "org": "Naturvårdsverket"})
-        if len(feats) < page:
+        body = get(f"{NV_WFS}?{q}", timeout=300)
+        try:
+            fc = json.loads(body)
             break
-        start += page
+        except ValueError:
+            errors.append(body[:300].decode("utf-8", "replace"))
+    if fc is None:
+        raise RuntimeError("WFS-Antwort ist kein GeoJSON: " + " | ".join(errors))
+    out = []
+    for f in fc.get("features") or []:
+        p = f.get("properties") or {}
+        pt = point_of(f.get("geometry"))
+        if not pt or not is_vindskydd(p):
+            continue
+        lon, lat = pt
+        if not in_sweden(lon, lat):  # Achsen vertauscht?
+            lon, lat = lat, lon
+        if in_sweden(lon, lat):
+            out.append({"lat": lat, "lon": lon, "src": "nv", "name": name_of(p), "org": "Naturvårdsverket"})
+    print(f"  NV: {len(fc.get('features') or [])} Anordnungen insgesamt", file=sys.stderr)
     return out
 
 
@@ -99,7 +109,12 @@ def fetch_hub():
         if "vindskydd" not in (a.get("name") or "").lower() or url in seen:
             continue
         seen.add(url)
-        org = a.get("organization") or a.get("owner") or ""
+        org = a.get("organization") or ""
+        owner = (a.get("owner") or "").lower()
+        # nur Daten von Behörden (ArcGIS-Organisation oder Kommun-Konto), keine Privatkonten
+        if not org and not any(w in owner for w in ("kommun", "gis", ".se", "lansstyrelse", "region")):
+            continue
+        org = org or a.get("owner")
         try:
             qs = urllib.parse.urlencode({"where": "1=1", "outFields": "*", "outSR": 4326, "f": "geojson"})
             fc = json.loads(get(f"{url.rstrip('/')}/query?{qs}"))

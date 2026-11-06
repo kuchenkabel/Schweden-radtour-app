@@ -125,6 +125,13 @@ def centroid(geom):
 MATCH_M = 150
 
 
+def osm_month(ts):
+    """osmium liefert @timestamp als Unix-Sekunden (oder ISO-Text) -> 'JJJJ-MM'."""
+    if isinstance(ts, (int, float)):
+        return datetime.datetime.fromtimestamp(ts, datetime.timezone.utc).strftime("%Y-%m")
+    return str(ts)[:7]
+
+
 def verify(pois, counts, refs):
     """Gleicht Vindskydd/Unterstände mit unabhängigen Quellen ab.
 
@@ -208,7 +215,7 @@ def main(src, dst, refs_path=None):
             if cat == "bahnhof" and "operator" in t:
                 extras["op"] = t["operator"]
             if cat in ("vindskydd", "unterstand") and t.get("@timestamp"):
-                extras["ts"] = t["@timestamp"][:7]  # letzte Bearbeitung in OSM (JJJJ-MM)
+                extras["ts"] = osm_month(t["@timestamp"])  # letzte Bearbeitung in OSM
             name = t.get("name") or t.get("name:sv") or ""
             pois.append([CAT_INDEX[cat], lat, lon, name] + ([extras] if extras else []))
             counts[cat] += 1
