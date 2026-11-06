@@ -65,9 +65,10 @@ Navigation Abbiegung für Abbiegung übernimmt OsmAnd oder Organic Maps.
 | Höhen | BRouter liefert Höhen mit der Route | Mit P2; bei GPX-Import aus der Datei |
 | Wetter und Wind | SMHI Open Data API | Online, letzter Abruf gecacht |
 | Juli-Wind je Region | SMHI historische Daten | Einmalig ausgewertet, als Tabelle in der App |
+| Zeltplatz-Kandidaten (Wildzelten) | NMD 2023 Marktäcke (Naturvårdsverket, CC0, inkl. Gebäude), Copernicus DEM 30 m, OSM-Wege/Nutzflächen/Schutzgebiete | `scripts/build_camp.py`, Workflow `camp.yml`, monatlich; max. 1 Punkt je km², Regeln: ≥ 200 m zu Gebäuden, Wald/Heide auf festem Boden, ≤ 6° Neigung, Weg 25–300 m, ≥ 150 m zu größeren Straßen |
 | Rad/Anhänger im Zug | Eigene Recherche je Verkehrsverbund: [data/transport-rules.json](../data/transport-rules.json) | Tabelle in der App, Stand mit Datum |
 
-OSM-Kategorien: `amenity=shelter` (shelter_type=lean_to/weather_shelter), `tourism=camp_site`, `tourism=hostel` (STF über operator/brand), `leisure=bathing_place`, `leisure=playground`, `amenity=drinking_water`, `amenity=toilets`, `shop=supermarket|convenience`, `shop=bicycle`, `shop=outdoor|hardware|sports` (Gaskartuschen), `amenity=pharmacy`, `healthcare=centre|amenity=clinic`, `railway=station`.
+OSM-Kategorien: `amenity=shelter` (Vindskydd nur shelter_type=lean_to/basic_hut oder Name mit "vindskydd"; übrige Unterstände als "unsicher", standardmäßig ausgeblendet), `tourism=camp_site`, `tourism=hostel` (STF über operator/brand), `leisure=bathing_place`, `leisure=playground`, `amenity=drinking_water`, `amenity=toilets`, `shop=supermarket|convenience`, `shop=bicycle`, `shop=outdoor|hardware|sports` (Gaskartuschen), `amenity=pharmacy`, `healthcare=centre|amenity=clinic`, `railway=station`.
 
 ## Technik
 
