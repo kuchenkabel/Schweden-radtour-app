@@ -4,3 +4,4 @@ public/data/pois-sweden.bin
 public/fonts
 android/app/build
 *.keystore
+__pycache__/
