@@ -170,6 +170,60 @@ async function chooseMapStyle() {
   mv.setStyle(pack ? offlineStyle(pack.uri, pack.region) : BLANK_STYLE);
 }
 
+// ---------- Kartengröße: Ziehleiste + Vollbild ----------
+function applyMapHeight(frac: number) {
+  $("#app").style.setProperty("--map-h", `${Math.round(frac * 1000) / 10}dvh`);
+}
+
+function setMapFull(on: boolean) {
+  $("#app").classList.toggle("mapfull", on);
+  const b = $("#mapfull");
+  b.textContent = on ? "⤡" : "⤢";
+  b.setAttribute("aria-label", on ? "Karte verkleinern" : "Karte vergrößern");
+  setTimeout(() => mv?.map.resize(), 50);
+}
+
+async function initSplitter() {
+  const app = $("#app");
+  const bar = $("#splitter");
+  let frac = await load<number>("mapHeight", 0.42);
+  applyMapHeight(frac);
+  $("#mapfull").addEventListener("click", (e) => {
+    e.stopPropagation();
+    setMapFull(!app.classList.contains("mapfull"));
+  });
+  let dragging = false;
+  let frame = 0;
+  bar.addEventListener("pointerdown", (e) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    dragging = true;
+    bar.setPointerCapture(e.pointerId);
+    bar.classList.add("drag");
+  });
+  bar.addEventListener("pointermove", (e) => {
+    if (!dragging) return;
+    const vh = window.innerHeight;
+    const top = $("#map").getBoundingClientRect().top;
+    const reserve = $("#tabs").getBoundingClientRect().height + bar.getBoundingClientRect().height + 60;
+    const px = Math.min(Math.max(e.clientY - top, vh * 0.12), vh - top - reserve);
+    frac = px / vh;
+    if (app.classList.contains("mapfull")) setMapFull(false);
+    applyMapHeight(frac);
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => mv?.map.resize());
+  });
+  const end = () => {
+    if (!dragging) return;
+    dragging = false;
+    bar.classList.remove("drag");
+    mv?.map.resize();
+    save("mapHeight", frac);
+  };
+  bar.addEventListener("pointerup", end);
+  bar.addEventListener("pointercancel", end);
+  window.addEventListener("resize", () => mv?.map.resize());
+}
+
 // ---------- Darstellung: Tabs ----------
 function setTab(tab: Tab) {
   S.tab = tab;
@@ -875,6 +929,7 @@ async function init() {
     render();
   });
   mv.map.on("style.load", updateMap);
+  await initSplitter();
 
   document.querySelectorAll<HTMLElement>("nav#tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab as Tab)));
   setTab(S.plan.line.length > 1 ? "unterwegs" : "planen");
