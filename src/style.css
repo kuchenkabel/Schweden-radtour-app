@@ -106,3 +106,18 @@ tr.click { cursor: pointer; }
   padding: 10px 16px; border-radius: 20px; font-size: 14px; z-index: 20; max-width: 90vw;
 }
 .progress { font-size: 13px; color: var(--muted); }
+
+#map { position: relative; }
+#mapbtns { position: absolute; top: 8px; left: 8px; z-index: 2; display: flex; gap: 6px; }
+#mapbtns button {
+  border: 1px solid var(--line); background: #fff; color: var(--blue); border-radius: 16px; padding: 5px 10px;
+  font-size: 13px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+#mapbtns button.on { background: var(--blue); color: #fff; }
+#pickhint {
+  position: absolute; top: 48px; left: 8px; z-index: 2; background: rgba(0, 0, 0, 0.75); color: #fff;
+  padding: 5px 10px; border-radius: 12px; font-size: 13px;
+}
+.spot { border-top: 1px solid var(--line); padding: 8px 0; }
+.spot .hd { cursor: pointer; }
+.spot ul { margin: 4px 0; padding-left: 18px; font-size: 13px; }

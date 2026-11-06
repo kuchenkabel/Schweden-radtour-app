@@ -10,7 +10,8 @@ import { alternativesNear, planStages, toDayPlan, type DayPlan, type Stage } fro
 import { brouterRoute, parseGpx, toGpx } from "./route";
 import { feasibleKm, headwind, smhiFireRisk, smhiForecast, windDirName, type WeatherHour } from "./weather";
 import { compareRegions, REGIONS, type Region } from "./regions";
-import { BLANK_STYLE, createMap, offlineStyle, ONLINE_STYLE, type MapView } from "./map";
+import { BLANK_STYLE, createMap, offlineStyle, ONLINE_STYLE, type MapView, type SatOptions } from "./map";
+import { compass, loadGrid, regionFor, scan, type ScanResult } from "./eignung";
 import { deletePack, downloadPack, isOnline, listPacks, type TilePack } from "./offline";
 import {
   exportPlanFile, importPlanFile, loadChecks, loadCustomItems, loadPeople, loadPlan, saveChecks, saveCustomItems,
@@ -46,6 +47,11 @@ const S = {
   people: [] as Person[],
   mapSource: "auto" as string,
   busy: "",
+  sat: false,
+  esriKey: "",
+  pickMode: false,
+  eigRadius: 500,
+  check: null as null | { center: LonLat; token: number },
 };
 
 let mv: MapView;
@@ -81,7 +87,10 @@ function openSheet(html: string, bind?: (el: HTMLElement) => void) {
   sh.querySelector(".close")!.addEventListener("click", closeSheet);
   bind?.(sh);
 }
-function closeSheet() { $("#sheet").hidden = true; }
+function closeSheet() {
+  $("#sheet").hidden = true;
+  if (S.check) { S.check = null; mv?.setCheck(null); }
+}
 
 async function shareFile(name: string, content: string, mime: string, title: string) {
   if (Capacitor.isNativePlatform()) {
@@ -721,11 +730,145 @@ function showPoi(p: Poi) {
     ${p.cat === "zeltplatz" ? "" : rows ? `<table>${rows}</table>` : `<p class="muted">Keine weiteren Angaben in OpenStreetMap.</p>`}
     ${p.cat === "vindskydd" || p.cat === "unterstand" || p.cat === "huette" || p.cat === "zeltplatz" ? `<p><a href="${sat}" target="_blank">Luftbild ansehen (online)</a></p>` : ""}
     <div class="row" style="margin-top:10px"><a class="btn" href="geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(${encodeURIComponent(poiName(p))})">Navigieren</a>
-    <button class="btn secondary" id="poiZoom">Auf Karte</button></div>`,
-    (el) => el.querySelector("#poiZoom")!.addEventListener("click", () => {
-      mv.map.flyTo({ center: [p.lon, p.lat], zoom: 15 });
-      closeSheet();
-    }),
+    <button class="btn secondary" id="poiZoom">Auf Karte</button>
+    <button class="btn secondary" id="poiSat">Luftbild in der App</button></div>`,
+    (el) => {
+      el.querySelector("#poiZoom")!.addEventListener("click", () => {
+        mv.map.flyTo({ center: [p.lon, p.lat], zoom: 15 });
+        closeSheet();
+      });
+      el.querySelector("#poiSat")!.addEventListener("click", async () => {
+        await setSat(true);
+        mv.map.flyTo({ center: [p.lon, p.lat], zoom: 17 });
+        closeSheet();
+      });
+    },
+  );
+}
+
+// ---------- Luftbild ----------
+function satOptions(): SatOptions {
+  if (S.esriKey) {
+    return {
+      tiles: `https://ibasemaps-api.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}?token=${encodeURIComponent(S.esriKey)}`,
+      maxzoom: 19,
+      attribution: "Esri, Maxar, Earthstar Geographics",
+    };
+  }
+  return {
+    tiles: "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg",
+    maxzoom: 15,
+    attribution: "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (Copernicus Sentinel data 2016), CC BY 4.0",
+  };
+}
+
+function applySat() {
+  mv.setSatellite(S.sat ? satOptions() : null);
+  $("#btnSat").classList.toggle("on", S.sat);
+}
+
+async function setSat(on: boolean) {
+  if (on && !S.online) {
+    toast("Luftbild braucht Internet");
+    S.sat = false;
+    applySat();
+    return;
+  }
+  S.sat = on;
+  applySat();
+  await save("sat", on);
+  if (on && !S.esriKey && !(await load("satHintShown", false))) {
+    toast("Grobes Satellitenbild (10 m). Für scharfe Luftbilder Esri-Schlüssel in den Einstellungen eintragen.", 6000);
+    await save("satHintShown", true);
+  }
+}
+
+// ---------- Punkt prüfen (Wildcamping-Eignung) ----------
+function setPickMode(on: boolean) {
+  S.pickMode = on;
+  if (on) S.addMode = false;
+  mv.setPickMode(on);
+  $("#btnPick").classList.toggle("on", on);
+  $("#pickhint").hidden = !on;
+}
+
+const eigColor = (sc: number): [string, string, string] =>
+  sc >= 75 ? ["#2e7d32", "grün", "gut"] : sc >= 60 ? ["#f9a825", "gelb", "brauchbar"] : ["#ef6c00", "orange", "mäßig"];
+const fmtM = (m: number) => (m >= 1000 ? `${(m / 1000).toLocaleString("de-DE", { maximumFractionDigits: 1 })} km` : `${Math.round(m / 10) * 10} m`);
+const RADII: [number, string][] = [[200, "200 m"], [500, "500 m"], [1000, "1 km"], [3000, "3 km"]];
+
+function radiusChips() {
+  return `<div class="chips">${RADII.map(([r, l]) => `<button class="chip ${S.eigRadius === r ? "on" : ""}" data-rad="${r}">${l}</button>`).join("")}</div>`;
+}
+
+async function checkPoint(center: LonLat) {
+  setPickMode(false);
+  const token = (S.check?.token ?? 0) + 1;
+  S.check = { center, token };
+  mv.setCheck({ center, radiusM: S.eigRadius, spots: [] });
+  const head = `<h3>📍 Punkt prüfen</h3>${radiusChips()}`;
+  const bindChips = (el: HTMLElement) =>
+    el.querySelectorAll<HTMLElement>("[data-rad]").forEach((b) =>
+      b.addEventListener("click", async () => {
+        S.eigRadius = Number(b.dataset.rad);
+        await save("eignungRadius", S.eigRadius);
+        checkPoint(center);
+      }),
+    );
+  const show = (html: string, bind?: (el: HTMLElement) => void) => {
+    if (S.check?.token !== token) return;
+    // closeSheet() würde die Prüfung löschen, daher Sheet direkt neu füllen
+    const keep = S.check;
+    openSheet(head + html, (el) => { bindChips(el); bind?.(el); });
+    S.check = keep;
+  };
+  show(`<p class="muted">Prüfe …</p>`);
+  const region = regionFor(center[0], center[1]);
+  if (!region) return show(`<p class="warn">Dieser Punkt liegt außerhalb der Regionen mit Eignungskarte.</p>`);
+  let res: ScanResult;
+  try {
+    res = scan(await loadGrid(region.id), center, S.eigRadius);
+  } catch (e) {
+    return show(`<p class="warn">${esc((e as Error).message)}</p>`);
+  }
+  if (S.check?.token !== token) return;
+  const spots = res.spots;
+  mv.setCheck({
+    center, radiusM: S.eigRadius,
+    spots: spots.map((sp, i) => ({ lon: sp.lon, lat: sp.lat, label: String(i + 1), color: eigColor(sp.score)[0] })),
+  });
+  const here = res.here.suitable
+    ? `<p><b>✅ geeignet</b> – dieser Punkt erfüllt alle Regeln.</p>`
+    : `<p><b>❌ nicht geeignet</b></p><ul>${res.here.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
+  const list = spots.length
+    ? spots.map((sp, i) => {
+        const [col, , txt] = eigColor(sp.score);
+        const name = `Schlafplatz ${i + 1}`;
+        return `<div class="spot"><div class="hd" data-spot="${i}"><b>${i + 1}. <span style="color:${col}">●</span> ${txt}</b> (${sp.score}/100) · ${fmtM(sp.distM)} ${compass(sp.bearing)}</div>
+          <ul>${sp.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+          <div class="row"><a class="btn small" href="geo:${sp.lat},${sp.lon}?q=${sp.lat},${sp.lon}(${encodeURIComponent(name)})">Navigieren</a>
+          <button class="btn small secondary" data-sat="${i}">Luftbild</button></div></div>`;
+      }).join("")
+    : `<p class="muted">Keine geeignete Stelle im Umkreis. Größeren Radius wählen.</p>`;
+  show(
+    `${here}<h3>Beste Stellen im Umkreis</h3>
+    <p class="muted">${res.suitableCount} von ${res.landCount} Landflächen-Rasterzellen im Umkreis sind geeignet.</p>${list}
+    <p class="muted">Grundlage: Marktäcke Naturvårdsverket, Copernicus-Höhenmodell, OpenStreetMap; Raster 50 m. Steine, Wurzeln, Privatgrund und Verbotsschilder sieht die Analyse nicht – vor Ort prüfen. Höchstens 1–2 Nächte, Abstand halten.</p>`,
+    (el) => {
+      el.querySelectorAll<HTMLElement>("[data-spot]").forEach((h) =>
+        h.addEventListener("click", () => {
+          const sp = spots[Number(h.dataset.spot)];
+          mv.map.flyTo({ center: [sp.lon, sp.lat], zoom: 16 });
+        }),
+      );
+      el.querySelectorAll<HTMLElement>("[data-sat]").forEach((b) =>
+        b.addEventListener("click", async () => {
+          const sp = spots[Number(b.dataset.sat)];
+          await setSat(true);
+          mv.map.flyTo({ center: [sp.lon, sp.lat], zoom: S.esriKey ? 17 : 15 });
+        }),
+      );
+    },
   );
 }
 
@@ -859,6 +1002,9 @@ function renderMehr(): string {
     }).join("")}</div>
     <div class="card"><label>Kartenquelle <select id="mapSource"><option value="auto">Automatisch (online, sonst Paket)</option>
       ${S.packs.map((p) => `<option value="${p.region}" ${S.mapSource === p.region ? "selected" : ""}>Offline: ${esc(REGIONS.find((r) => r.id === p.region)?.name ?? p.region)}</option>`).join("")}</select></label></div>
+    <h2>Luftbild (Esri)</h2><div class="card"><p class="muted">Kostenloses Konto auf location.arcgis.com anlegen, unter Developer credentials einen API-Schlüssel mit dem Recht 'Basemaps' erstellen und hier einfügen. Der Schlüssel bleibt nur auf diesem Handy.</p>
+      <input type="password" id="esriKey" placeholder="API-Schlüssel" value="${esc(S.esriKey)}" autocomplete="off" style="width:100%">
+      <div class="row" style="margin-top:8px"><button class="btn small" id="esriSave">Speichern</button><button class="btn small danger" id="esriDel">Löschen</button></div></div>
     <h2>Erinnerungen</h2><div class="card"><p>Während der Tour täglich um 8:30 „Wind und Etappe checken“ und um 15:30 „Camp aufbauen, Wasser auffüllen, Zeckencheck“.</p>
       <button class="btn" id="notify">Erinnerungen einplanen</button></div>
     <h2>Xiaomi-Handys einrichten</h2><div class="card content">${XIAOMI_HILFE}</div>
@@ -897,6 +1043,15 @@ function bindMehr() {
     await chooseMapStyle();
   });
   $("#notify")?.addEventListener("click", scheduleReminders);
+  const setKey = async (k: string) => {
+    S.esriKey = k;
+    await save("esriKey", k);
+    if (S.sat) applySat();
+    toast(k ? "Schlüssel gespeichert" : "Schlüssel gelöscht");
+    render();
+  };
+  $("#esriSave")?.addEventListener("click", () => setKey($<HTMLInputElement>("#esriKey").value.trim()));
+  $("#esriDel")?.addEventListener("click", () => setKey(""));
 }
 
 async function scheduleReminders() {
@@ -952,6 +1107,9 @@ async function init() {
   S.custom = await loadCustomItems();
   S.people = await loadPeople();
   S.mapSource = await load("mapSource", "auto");
+  S.esriKey = await load("esriKey", "");
+  S.eigRadius = await load("eignungRadius", 500);
+  const wantSat = await load("sat", false);
   const vis = await load<Cat[] | null>("visibleCats", null);
   if (vis) S.visible = new Set(vis);
   const nc = await load<Cat[] | null>("nextCats", null);
@@ -969,6 +1127,9 @@ async function init() {
     render();
   });
   mv.map.on("style.load", updateMap);
+  mv.onPick((p) => checkPoint(p));
+  $("#btnPick").addEventListener("click", () => setPickMode(!S.pickMode));
+  $("#btnSat").addEventListener("click", () => setSat(!S.sat));
   await initSplitter();
 
   document.querySelectorAll<HTMLElement>("nav#tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab as Tab)));
@@ -976,6 +1137,7 @@ async function init() {
 
   S.online = await isOnline();
   await chooseMapStyle();
+  if (wantSat) await setSat(true);
   window.addEventListener("online", async () => { S.online = await isOnline(); chooseMapStyle(); refreshWeather(); render(); });
   window.addEventListener("offline", () => { S.online = false; chooseMapStyle(); render(); });
 
