@@ -38,7 +38,7 @@ export const EXTRA_LABELS: Record<string, string> = {
   oh: "Öffnungszeiten", web: "Webseite", tel: "Telefon", op: "Betreiber", fee: "Gebühr",
   dw: "Trinkwasser", wc: "Toiletten", sh: "Dusche", wm: "Waschmaschine", res: "Reservierung",
   tent: "Zelte", cap: "Kapazität", fire: "Feuerstelle", bike: "Fahrrad", rs: "Rollstuhl",
-  desc: "Beschreibung", acc: "Zugang", chk: "Zuletzt in OSM geprüft", typ: "Art (OSM)",
+  desc: "Beschreibung", acc: "Zugang", chk: "Zuletzt in OSM geprüft", typ: "Art (OSM)", ts: "Zuletzt in OSM bearbeitet",
 };
 
 /** Einfaches Gitter-Raster für schnelle Umkreis-Abfragen (Zelle ca. 0,1° = ~6-11 km). */

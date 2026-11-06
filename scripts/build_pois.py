@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Wandelt einen osmium-GeoJSON-Seq-Export in die kompakte POI-Datei der App um.
 
-Aufruf: build_pois.py <eingabe.geojsonseq> <ausgabe.json>
+Aufruf: build_pois.py <eingabe.geojsonseq> <ausgabe.json> [refs.json]
+refs.json (optional, von fetch_refs.py): unabhängige Vindskydd-Standorte zum Gegenprüfen.
 Ausgabeformat (Version 1):
   {"v":1,"generated":"YYYY-MM-DD","source":"...","cats":[...],
    "pois":[[catIndex, lat_e5, lon_e5, name, {extras}], ...]}
@@ -9,6 +10,7 @@ lat/lon sind Ganzzahlen in 1e-5 Grad (ca. 1 m Genauigkeit).
 """
 import datetime
 import json
+import math
 import sys
 
 CATS = [
@@ -120,7 +122,65 @@ def centroid(geom):
     return sum(p[1] for p in pts) / len(pts), sum(p[0] for p in pts) / len(pts)
 
 
-def main(src, dst):
+MATCH_M = 150
+
+
+def verify(pois, counts, refs):
+    """Gleicht Vindskydd/Unterstände mit unabhängigen Quellen ab.
+
+    Treffer im Umkreis von 150 m: extras "ver" = Quelle (nv/kom), "vsrc" = Organisation;
+    ein Unterstand mit Treffer wird zum Vindskydd. Referenzpunkte ohne OSM-Gegenstück
+    kommen als neue Vindskydd hinzu (extras "neu" = "1").
+    """
+    vi, un = CAT_INDEX["vindskydd"], CAT_INDEX["unterstand"]
+    grid = {}
+
+    def key(lat, lon):
+        return (lat // 200, lon // 400)  # ca. 220 m x 220 m (lat/lon in 1e-5 Grad)
+
+    def put(p):
+        grid.setdefault(key(p[1], p[2]), []).append(p)
+
+    for p in pois:
+        if p[0] in (vi, un):
+            put(p)
+    stats = {"bestaetigt": 0, "hochgestuft": 0, "neu": 0}
+    for r in refs:
+        lat, lon = round(r["lat"] * 1e5), round(r["lon"] * 1e5)
+        ky, kx = key(lat, lon)
+        best, best_d = None, MATCH_M
+        coslat = math.cos(math.radians(r["lat"]))
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                for p in grid.get((ky + dy, kx + dx), []):
+                    d = math.hypot((p[1] - lat) * 1.11, (p[2] - lon) * 1.11 * coslat)
+                    if d < best_d or (best is not None and d == best_d and p[0] == vi):
+                        best, best_d = p, d
+        if best is not None:
+            if len(best) < 5:
+                best.append({})
+            ex = best[4]
+            if "ver" not in ex:
+                stats["bestaetigt"] += 1
+            ex.setdefault("ver", r["src"])
+            ex.setdefault("vsrc", r.get("org", "")[:60])
+            if best[0] == un:
+                best[0] = vi
+                counts["unterstand"] -= 1
+                counts["vindskydd"] += 1
+                stats["hochgestuft"] += 1
+            if not best[3] and r.get("name"):
+                best[3] = r["name"]
+        else:
+            p = [vi, lat, lon, r.get("name", ""), {"ver": r["src"], "vsrc": r.get("org", "")[:60], "neu": "1"}]
+            pois.append(p)
+            put(p)
+            counts["vindskydd"] += 1
+            stats["neu"] += 1
+    print(f"Gegenprüfung: {len(refs)} Referenzen, " + ", ".join(f"{k} {v}" for k, v in stats.items()))
+
+
+def main(src, dst, refs_path=None):
     pois, seen = [], set()
     counts = {c: 0 for c in CATS}
     with open(src, encoding="utf-8") as f:
@@ -147,9 +207,13 @@ def main(src, dst):
                     extras[short] = t[tag][:200]
             if cat == "bahnhof" and "operator" in t:
                 extras["op"] = t["operator"]
+            if cat in ("vindskydd", "unterstand") and t.get("@timestamp"):
+                extras["ts"] = t["@timestamp"][:7]  # letzte Bearbeitung in OSM (JJJJ-MM)
             name = t.get("name") or t.get("name:sv") or ""
             pois.append([CAT_INDEX[cat], lat, lon, name] + ([extras] if extras else []))
             counts[cat] += 1
+    if refs_path:
+        verify(pois, counts, json.load(open(refs_path, encoding="utf-8")))
     out = {
         "v": 1,
         "generated": datetime.date.today().isoformat(),
@@ -165,4 +229,4 @@ def main(src, dst):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else None)

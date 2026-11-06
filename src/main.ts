@@ -619,8 +619,21 @@ const SHELTER_TYPES: Record<string, string> = {
   picnic_shelter: "Picknickdach", pavilion: "Pavillon",
 };
 
+const HIDDEN_EXTRAS = new Set(["ver", "vsrc", "neu"]);
+
+/** Hinweis, ob ein Vindskydd von einer zweiten Quelle bestätigt ist. */
+function verifyBadge(p: Poi): string {
+  if (p.cat !== "vindskydd") return "";
+  if (p.x.neu)
+    return `<p>🟡 <b>Nur bei ${esc(p.x.vsrc || "einer Behörde")} verzeichnet</b>, nicht in OpenStreetMap. Lage kann ungenau sein.</p>`;
+  if (p.x.ver)
+    return `<p>✅ <b>Bestätigt</b> durch ${esc(p.x.vsrc || (p.x.ver === "nv" ? "Naturvårdsverket" : "Kommune"))} (zweite, unabhängige Quelle).</p>`;
+  return `<p>⚪ <b>Nur OpenStreetMap</b>, keine zweite Quelle gefunden. Vorher im Luftbild oder vor Ort prüfen.</p>`;
+}
+
 function showPoi(p: Poi) {
   const rows = p.cat === "zeltplatz" ? "" : Object.entries(p.x)
+    .filter(([k]) => !HIDDEN_EXTRAS.has(k))
     .map(([k, v]) => {
       const label = EXTRA_LABELS[k] ?? k;
       if (k === "typ") v = SHELTER_TYPES[v] ?? v;
@@ -645,9 +658,7 @@ function showPoi(p: Poi) {
   const hint =
     p.cat === "unterstand"
       ? `<p class="muted">In OpenStreetMap ist hier nur ein Unterstand ohne genaue Art eingetragen (oft ein Picknickdach oder Wetterschutz). Ob man darin schlafen kann, ist unsicher.</p>`
-      : p.cat === "vindskydd" && !p.x.chk
-        ? `<p class="muted">Kein Prüfdatum in OpenStreetMap. Vor dem Planen am besten im Luftbild nachsehen.</p>`
-        : "";
+      : verifyBadge(p);
   const sat = `https://www.google.com/maps/@?api=1&map_action=map&center=${p.lat},${p.lon}&zoom=19&basemap=satellite`;
   openSheet(
     `<h3>${CAT_INFO[p.cat].icon} ${esc(poiName(p))}</h3><p class="muted">${esc(CAT_INFO[p.cat].label)}${dist}</p>
