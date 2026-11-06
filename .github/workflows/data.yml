@@ -8,6 +8,12 @@ on:
     branches: [main]
     paths:
       - scripts/build_pois.py
+      - scripts/fetch_refs.py
+      - .github/workflows/data.yml
+  pull_request:
+    paths:
+      - scripts/build_pois.py
+      - scripts/fetch_refs.py
       - .github/workflows/data.yml
 
 permissions:
@@ -32,13 +38,23 @@ jobs:
             nwa/shop=supermarket,convenience,bicycle,outdoor,sports,hardware,doityourself \
             nw/railway=station,halt \
             -o filtered.osm.pbf
-          osmium export filtered.osm.pbf -f geojsonseq -o filtered.geojsonseq
+          osmium export filtered.osm.pbf -f geojsonseq -a timestamp -o filtered.geojsonseq
+      - name: Vergleichsdaten für Vindskydd laden (Naturvårdsverket, Kommunen)
+        run: python3 scripts/fetch_refs.py refs.json
       - name: Kompakte POI-Datei bauen
         run: |
-          python3 scripts/build_pois.py filtered.geojsonseq pois-sweden.json
+          python3 scripts/build_pois.py filtered.geojsonseq pois-sweden.json refs.json
           gzip -9 -k pois-sweden.json
           ls -lh pois-sweden.json*
+      - name: Ergebnis als Build-Artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: pois-sweden
+          path: |
+            pois-sweden.json.gz
+            refs.json
       - name: Als Release "data-latest" veröffentlichen
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

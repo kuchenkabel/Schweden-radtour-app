@@ -48,7 +48,7 @@ export interface DayPlan {
 
 /** Bevorzugung je Schlafplatz-Typ (kleiner = besser). */
 const SLEEP_PENALTY: Partial<Record<string, number>> = {
-  camping: 0, vindskydd: 2, stf: 3, huette: 4, hostel: 6,
+  camping: 0, vindskydd: 2, stf: 3, huette: 4, hostel: 6, zeltplatz: 5,
 };
 
 interface Node { km: number; poi: Poi | null; off: number }
@@ -96,7 +96,7 @@ export function planStages(
     if (eff > S.maxKm) c += ((eff - S.maxKm) / 2) ** 2 * 10;
     const isLast = b.poi === null;
     if (eff < S.minKm && !isLast) c += ((S.minKm - eff) / 3) ** 2 * 4;
-    if (b.poi) c += SLEEP_PENALTY[b.poi.cat] ?? 5;
+    if (b.poi) c += (SLEEP_PENALTY[b.poi.cat] ?? 5) + (b.poi.cat === "vindskydd" && !b.poi.x?.ver ? 1.5 : 0);
     c += 4; // Grundkosten pro Tag: weniger Etappen bevorzugt, wenn sonst gleich
     return c;
   };

@@ -5,7 +5,7 @@ import { Geolocation } from "@capacitor/geolocation";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Share } from "@capacitor/share";
 import { bboxOf, cumulativeKm, haversineKm, projectOnLine, type LonLat } from "./geo";
-import { CAT_INFO, EXTRA_LABELS, loadPois, poisAlongRoute, type Cat, type Poi, type PoiIndex, type RoutePoi } from "./pois";
+import { CAT_INFO, EXTRA_LABELS, loadCamp, loadPois, poisAlongRoute, type Cat, type Poi, type PoiIndex, type RoutePoi } from "./pois";
 import { alternativesNear, planStages, toDayPlan, type DayPlan, type Stage } from "./stages";
 import { brouterRoute, parseGpx, toGpx } from "./route";
 import { feasibleKm, headwind, smhiFireRisk, smhiForecast, windDirName, type WeatherHour } from "./weather";
@@ -538,7 +538,7 @@ function renderUnterwegs(): string {
       <button class="btn secondary" id="doneStage">${S.plan.done.includes(stage.day) ? "Erledigt ✓" : "Etappe erledigt"}</button></div></div>`;
   }
 
-  html += `<h2>Was kommt als Nächstes</h2>${catChips(S.nextCats, ["badplats", "spielplatz", "wasser", "wc", "supermarkt", "vindskydd", "camping", "stf", "radladen", "gas", "apotek", "bahnhof"], "next")}
+  html += `<h2>Was kommt als Nächstes</h2>${catChips(S.nextCats, ["badplats", "spielplatz", "wasser", "wc", "supermarkt", "vindskydd", "zeltplatz", "camping", "stf", "radladen", "gas", "apotek", "bahnhof"], "next")}
     <div class="card">${
       ahead
         .filter((r) => S.nextCats.has(r.poi.cat) && r.alongKm - along < 80 && r.offKm <= (MINOR.has(r.poi.cat) ? 1 : 3))
@@ -668,18 +668,58 @@ function bindPoiClicks() {
   );
 }
 
+const SHELTER_TYPES: Record<string, string> = {
+  lean_to: "Windschutzhütte (Vindskydd)", basic_hut: "Einfache Hütte", weather_shelter: "Wetterschutz",
+  picnic_shelter: "Picknickdach", pavilion: "Pavillon",
+};
+
+const HIDDEN_EXTRAS = new Set(["ver", "vsrc", "neu"]);
+
+/** Hinweis, ob ein Vindskydd von einer zweiten Quelle bestätigt ist. */
+function verifyBadge(p: Poi): string {
+  if (p.cat !== "vindskydd") return "";
+  if (p.x.neu)
+    return `<p>🟡 <b>Nur bei ${esc(p.x.vsrc || "einer Behörde")} verzeichnet</b>, nicht in OpenStreetMap. Lage kann ungenau sein.</p>`;
+  if (p.x.ver)
+    return `<p>✅ <b>Bestätigt</b> durch ${esc(p.x.vsrc || (p.x.ver === "nv" ? "Naturvårdsverket" : "Kommune"))} (zweite, unabhängige Quelle).</p>`;
+  return `<p>⚪ <b>Nur OpenStreetMap</b>, keine zweite Quelle gefunden. Vorher im Luftbild oder vor Ort prüfen.</p>`;
+}
+
 function showPoi(p: Poi) {
-  const rows = Object.entries(p.x)
+  const rows = p.cat === "zeltplatz" ? "" : Object.entries(p.x)
+    .filter(([k]) => !HIDDEN_EXTRAS.has(k))
     .map(([k, v]) => {
       const label = EXTRA_LABELS[k] ?? k;
+      if (k === "typ") v = SHELTER_TYPES[v] ?? v;
       const val = k === "web" ? `<a href="${esc(v)}" target="_blank">${esc(v)}</a>` : k === "tel" ? `<a href="tel:${esc(v.replace(/\s/g, ""))}">${esc(v)}</a>` : esc(v);
       return `<tr><th>${esc(label)}</th><td>${val}</td></tr>`;
     })
     .join("");
   const dist = S.pos ? ` · ${km(haversineKm(S.pos, [p.lon, p.lat]), 1)} Luftlinie` : "";
+  let camp = "";
+  if (p.cat === "zeltplatz") {
+    const sc = Number(p.x.sc);
+    const [col, txt] = sc >= 75 ? ["#2e7d32", "gut"] : sc >= 60 ? ["#f9a825", "brauchbar"] : ["#ef6c00", "mäßig"];
+    camp = `<p><b><span style="color:${col}">●</span> ${txt}</b> (Score ${esc(p.x.sc)}/100)</p><ul>
+      <li>Untergrund: ${esc(p.x.gr)}</li>
+      <li>Nächstes Gebäude: ${esc(p.x.hs)} m (Jedermannsrecht: außer Sicht von Häusern, Faustregel mind. 150–200 m)</li>
+      <li>Neigung: ca. ${esc(p.x.sl)}°</li>
+      <li>Weg/Zufahrt: ${esc(p.x.ac)} m</li>
+      <li>${p.x.wa === "9999" ? "kein See/Fluss in der Nähe" : `Wasser: ${esc(p.x.wa)} m`}</li>
+      ${p.x.res ? `<li>⚠️ Liegt in einem Naturschutzgebiet: Zelt-Regeln vor Ort prüfen</li>` : ""}</ul>
+      <p class="muted">Berechnet aus offenen Daten (Marktäcke Naturvårdsverket, Höhenmodell Copernicus, OpenStreetMap). Steine, Wurzeln, Hanglage im Kleinen und Privatgrund sieht die Analyse nicht. Höchstens 1–2 Nächte, Abstand halten, nichts hinterlassen.</p>`;
+  }
+  const hint =
+    p.cat === "unterstand"
+      ? `<p class="muted">In OpenStreetMap ist hier nur ein Unterstand ohne genaue Art eingetragen (oft ein Picknickdach oder Wetterschutz). Ob man darin schlafen kann, ist unsicher.</p>`
+      : verifyBadge(p);
+  const sat = `https://www.google.com/maps/@?api=1&map_action=map&center=${p.lat},${p.lon}&zoom=19&basemap=satellite`;
   openSheet(
     `<h3>${CAT_INFO[p.cat].icon} ${esc(poiName(p))}</h3><p class="muted">${esc(CAT_INFO[p.cat].label)}${dist}</p>
-    ${rows ? `<table>${rows}</table>` : `<p class="muted">Keine weiteren Angaben in OpenStreetMap.</p>`}
+    ${hint}
+    ${camp}
+    ${p.cat === "zeltplatz" ? "" : rows ? `<table>${rows}</table>` : `<p class="muted">Keine weiteren Angaben in OpenStreetMap.</p>`}
+    ${p.cat === "vindskydd" || p.cat === "unterstand" || p.cat === "huette" || p.cat === "zeltplatz" ? `<p><a href="${sat}" target="_blank">Luftbild ansehen (online)</a></p>` : ""}
     <div class="row" style="margin-top:10px"><a class="btn" href="geo:${p.lat},${p.lon}?q=${p.lat},${p.lon}(${encodeURIComponent(poiName(p))})">Navigieren</a>
     <button class="btn secondary" id="poiZoom">Auf Karte</button></div>`,
     (el) => el.querySelector("#poiZoom")!.addEventListener("click", () => {
@@ -942,6 +982,7 @@ async function init() {
   try {
     S.busy = "Lade Ortsdaten …";
     S.index = await loadPois();
+    try { await loadCamp(S.index); } catch (e) { console.log(`[pois] Zeltplatz-Fehler: ${(e as Error).message}`); }
     S.busy = "";
   } catch (e) {
     S.busy = `Ortsdaten fehlen: ${(e as Error).message}`;

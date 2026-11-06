@@ -2,7 +2,8 @@ import { cumulativeKm, haversineKm, projectOnLine, type LonLat } from "./geo";
 
 export type Cat =
   | "vindskydd" | "huette" | "camping" | "stf" | "hostel" | "badplats" | "spielplatz"
-  | "wasser" | "wc" | "supermarkt" | "radladen" | "gas" | "apotek" | "vard" | "bahnhof";
+  | "wasser" | "wc" | "supermarkt" | "radladen" | "gas" | "apotek" | "vard" | "bahnhof"
+  | "unterstand" | "zeltplatz";
 
 export interface Poi {
   id: number;
@@ -29,13 +30,15 @@ export const CAT_INFO: Record<Cat, { label: string; icon: string; color: string;
   apotek: { label: "Apotek", icon: "💊", color: "#c62828" },
   vard: { label: "Vårdcentral/Klinik", icon: "🏥", color: "#d32f2f" },
   bahnhof: { label: "Bahnhof", icon: "🚆", color: "#455a64" },
+  zeltplatz: { label: "Zeltplatz-Kandidat", icon: "🌲", color: "#388e3c", sleep: true },
+  unterstand: { label: "Unterstand (unsicher)", icon: "❔", color: "#9e9e9e" },
 };
 
 export const EXTRA_LABELS: Record<string, string> = {
   oh: "Öffnungszeiten", web: "Webseite", tel: "Telefon", op: "Betreiber", fee: "Gebühr",
   dw: "Trinkwasser", wc: "Toiletten", sh: "Dusche", wm: "Waschmaschine", res: "Reservierung",
   tent: "Zelte", cap: "Kapazität", fire: "Feuerstelle", bike: "Fahrrad", rs: "Rollstuhl",
-  desc: "Beschreibung", acc: "Zugang",
+  desc: "Beschreibung", acc: "Zugang", chk: "Zuletzt in OSM geprüft", typ: "Art (OSM)", ts: "Zuletzt in OSM bearbeitet",
 };
 
 /** Einfaches Gitter-Raster für schnelle Umkreis-Abfragen (Zelle ca. 0,1° = ~6-11 km). */
@@ -56,6 +59,18 @@ export class PoiIndex {
       x: (p[4] as Record<string, string>) || {},
     }));
     for (const p of this.all) {
+      const k = this.key(p.lon, p.lat);
+      let cell = this.grid.get(k);
+      if (!cell) this.grid.set(k, (cell = []));
+      cell.push(p);
+    }
+  }
+
+  /** Fügt weitere POIs hinzu; ids bleiben der Index in `all`. */
+  add(pois: Omit<Poi, "id">[]) {
+    for (const q of pois) {
+      const p: Poi = { ...q, id: this.all.length };
+      this.all.push(p);
       const k = this.key(p.lon, p.lat);
       let cell = this.grid.get(k);
       if (!cell) this.grid.set(k, (cell = []));
@@ -139,10 +154,9 @@ export function poisAlongRoute(
   return [...seen.values()].sort((a, b) => a.alongKm - b.alongKm);
 }
 
-/** Lädt die POI-Datei (gzip) aus dem App-Paket. */
-export async function loadPois(url = "data/pois-sweden.bin"): Promise<PoiIndex> {
+async function fetchGzipJson(url: string, label: string): Promise<any> {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`POI-Datei nicht gefunden (${res.status})`);
+  if (!res.ok) throw new Error(`${label} nicht gefunden (${res.status})`);
   console.log(`[pois] ${url} geladen`);
   const buf = await res.arrayBuffer();
   const bytes = new Uint8Array(buf);
@@ -153,5 +167,46 @@ export async function loadPois(url = "data/pois-sweden.bin"): Promise<PoiIndex> 
   } else {
     text = new TextDecoder().decode(bytes); // Server hat schon entpackt
   }
-  return new PoiIndex(JSON.parse(text));
+  return JSON.parse(text);
+}
+
+/** Lädt die POI-Datei (gzip) aus dem App-Paket. */
+export async function loadPois(url = "data/pois-sweden.bin"): Promise<PoiIndex> {
+  return new PoiIndex(await fetchGzipJson(url, "POI-Datei"));
+}
+
+const CAMP_GROUND: Record<number, string> = {
+  111: "Kiefernwald", 112: "Fichtenwald", 113: "Nadel-Mischwald", 114: "Mischwald",
+  115: "Laubwald", 116: "Edellaubwald", 117: "Laub-/Edellaubwald", 42: "offenes Grasland/Heide",
+};
+
+/** Lädt die Zeltplatz-Kandidaten (optional) und fügt sie dem Index hinzu. */
+export async function loadCamp(index: PoiIndex, url = "data/camp-sweden.bin"): Promise<number> {
+  let data: { pts: number[][] };
+  try {
+    data = await fetchGzipJson(url, "Zeltplatz-Datei");
+  } catch (e) {
+    console.warn(`[pois] Zeltplatz-Kandidaten fehlen: ${(e as Error).message}`);
+    return 0;
+  }
+  const pts = data.pts ?? [];
+  index.add(
+    pts.map((p) => ({
+      cat: "zeltplatz" as Cat,
+      lat: p[0] / 1e5,
+      lon: p[1] / 1e5,
+      name: "",
+      x: {
+        sc: String(p[2]),
+        hs: String(p[3]),
+        sl: (p[4] / 10).toFixed(1),
+        wa: String(p[5]),
+        ac: String(p[6]),
+        gr: CAMP_GROUND[p[7]] ?? "unbekannt",
+        ...(p[8] ? { res: "1" } : {}),
+      },
+    })),
+  );
+  console.log(`[pois] ${pts.length} Zeltplatz-Kandidaten`);
+  return pts.length;
 }

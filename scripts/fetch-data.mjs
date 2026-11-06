@@ -27,6 +27,14 @@ if (process.env.SKIP_POIS !== "1") {
   const buf = await get(asset.url, { ...auth, Accept: "application/octet-stream" });
   await writeFile("public/data/pois-sweden.bin", buf);
   console.log(`POIs: ${(buf.length / 1e6).toFixed(2)} MB`);
+  const camp = rel.assets.find((a) => a.name === "camp-sweden.json.gz");
+  if (camp) {
+    const cbuf = await get(camp.url, { ...auth, Accept: "application/octet-stream" });
+    await writeFile("public/data/camp-sweden.bin", cbuf);
+    console.log(`Zeltplatz-Kandidaten: ${(cbuf.length / 1e6).toFixed(2)} MB`);
+  } else {
+    console.log("Hinweis: camp-sweden.json.gz nicht im Release data-latest (Zeltplatz-Ebene bleibt leer)");
+  }
 }
 
 for (const font of FONTS) {

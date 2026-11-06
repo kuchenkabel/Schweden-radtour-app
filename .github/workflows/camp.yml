@@ -1,0 +1,131 @@
+name: Zeltplatz-Kandidaten
+
+on:
+  workflow_dispatch:
+    inputs:
+      regions:
+        description: "Regionen (Komma-getrennt, leer = alle)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 5 2 * *"   # monatlich am 2., nach dem POI-Datenpaket
+  push:
+    branches: [main]
+    paths:
+      - scripts/build_camp.py
+      - .github/workflows/camp.yml
+  pull_request:
+    paths:
+      - scripts/build_camp.py
+      - .github/workflows/camp.yml
+
+permissions:
+  contents: write
+
+jobs:
+  camp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    steps:
+      - uses: actions/checkout@v4
+      - name: Platz schaffen
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h .
+      - name: Werkzeuge installieren
+        run: |
+          sudo apt-get update && sudo apt-get install -y osmium-tool gdal-bin
+          pip install numpy scipy rasterio shapely pyproj
+      - name: Regionen lesen
+        env:
+          # Bei Pull Requests nur eine kleine Region als Test
+          WANT: ${{ github.event_name == 'pull_request' && 'gotland' || inputs.regions }}
+        run: |
+          python3 - <<'PY' > regions.txt
+          import os, re
+          src = open("src/regions.ts", encoding="utf-8").read()
+          want = {w.strip() for w in os.environ.get("WANT", "").split(",") if w.strip()}
+          for m in re.finditer(r'id: "([a-z]+)", name: "[^"]+", bbox: \[([^\]]+)\]', src):
+              rid, bbox = m.group(1), m.group(2).replace(" ", "")
+              if not want or rid in want:
+                  print(rid, bbox)
+          PY
+          cat regions.txt
+      - name: Marktäckedata (NMD 2023, Naturvårdsverket) laden
+        run: |
+          curl -sSfL -o nmd.zip https://geodata.naturvardsverket.se/nedladdning/marktacke/NMD2023/Basskikt_v2_x/NMD2023_basskikt_v2_1.zip
+          ls -lh nmd.zip
+          unzip -o nmd.zip -d nmd && rm nmd.zip
+          find nmd -type f | head -20
+          TIF=$(find nmd -iname '*.tif' | head -1)
+          gdalinfo "$TIF" | head -30
+          echo "NMD=$TIF" >> "$GITHUB_ENV"
+      - name: Höhenmodell (Copernicus GLO-30) laden
+        run: |
+          mkdir -p dem
+          python3 - <<'PY' > dem-tiles.txt
+          import math
+          tiles = set()
+          for line in open("regions.txt"):
+              w, s, e, n = map(float, line.split()[1].split(","))
+              for lat in range(math.floor(s) - 1, math.ceil(n) + 1):
+                  for lon in range(math.floor(w) - 1, math.ceil(e) + 1):
+                      tiles.add((lat, lon))
+          for lat, lon in sorted(tiles):
+              print(f"Copernicus_DSM_COG_10_N{lat:02d}_00_E{lon:03d}_00_DEM")
+          PY
+          while read -r t; do
+            curl -sSfL -o "dem/$t.tif" "https://copernicus-dem-30m.s3.amazonaws.com/$t/$t.tif" || echo "fehlt (Meer): $t"
+          done < dem-tiles.txt
+          gdalbuildvrt dem.vrt dem/*.tif
+          du -sh dem
+      - name: OSM-Extrakt Schweden laden und filtern
+        run: |
+          curl -sSfL -o sweden.osm.pbf https://download.geofabrik.de/europe/sweden-latest.osm.pbf
+          osmium tags-filter sweden.osm.pbf \
+            w/highway \
+            wa/landuse wa/leisure wa/natural=wetland wa/tourism=camp_site,caravan_site \
+            wa/amenity=parking wa/military wa/aeroway=aerodrome \
+            wa/boundary=national_park,protected_area \
+            -o filtered.osm.pbf
+          rm sweden.osm.pbf
+          ls -lh filtered.osm.pbf
+      - name: Kandidaten je Region berechnen
+        run: |
+          mkdir -p out
+          while read -r id bbox; do
+            echo "::group::$id"
+            IFS=, read -r w s e n <<< "$bbox"
+            ext=$(python3 -c "print(f'{$w-0.15},{$s-0.1},{$e+0.15},{$n+0.1}')")
+            osmium extract -s smart -b "$ext" filtered.osm.pbf -o "r-$id.osm.pbf" --overwrite
+            osmium export "r-$id.osm.pbf" -f geojsonseq -o "r-$id.geojsonseq" --overwrite
+            python3 scripts/build_camp.py region --bbox "$bbox" --nmd "$NMD" --dem dem.vrt \
+              --osm "r-$id.geojsonseq" --out "out/$id.json"
+            rm "r-$id.osm.pbf" "r-$id.geojsonseq"
+            echo "::endgroup::"
+          done < regions.txt
+      - name: Zusammenführen
+        run: |
+          if [ -n "${{ inputs.regions }}" ]; then
+            # Teil-Lauf: vorhandene Datei aus dem Release mit einbeziehen
+            gh release download data-latest -p camp-regions.tar.gz -O old.tar.gz 2>/dev/null && tar xzf old.tar.gz -C out --skip-old-files || true
+          fi
+          python3 scripts/build_camp.py merge --out camp-sweden.json out/*.json
+          gzip -9 -k camp-sweden.json
+          tar czf camp-regions.tar.gz -C out .
+          ls -lh camp-sweden.json*
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Ergebnis als Build-Artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: camp-sweden
+          path: camp-sweden.json.gz
+      - name: Als Release "data-latest" veröffentlichen
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view data-latest >/dev/null 2>&1 || \
+            gh release create data-latest --title "Datenpaket (automatisch)" --notes "POIs Schweden aus OpenStreetMap. Wird monatlich neu gebaut." --prerelease
+          gh release upload data-latest camp-sweden.json.gz camp-regions.tar.gz --clobber
