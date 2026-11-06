@@ -1,0 +1,106 @@
+name: Testgebiet Eignungskarte
+
+# Baut eine Eignungskarte ("Punkt prüfen") für ein kleines Testgebiet außerhalb Schwedens,
+# z.B. in Deutschland, als ob dort Jedermannsrecht gälte. Boden aus ESA WorldCover statt NMD.
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "Kennung, nur Kleinbuchstaben (z.B. testheimat)"
+        required: true
+      name:
+        description: "Anzeigename (z.B. Test: Wiese bei X)"
+        required: true
+      bbox:
+        description: "W,S,E,N in Grad (ca. 20 x 20 km)"
+        required: true
+      osm:
+        description: "Geofabrik-Extrakt"
+        required: false
+        default: "https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+  pull_request:
+    paths:
+      - scripts/prep_worldcover.py
+      - .github/workflows/camp-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  test-area:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # beim PR-Test ein kleines Gebiet (bekannte Wiese bei Hanau)
+      ID: ${{ inputs.id || 'prtest' }}
+      NAME: ${{ inputs.name || 'PR-Test' }}
+      BBOX: ${{ inputs.bbox || '8.93,50.16,9.02,50.22' }}
+      OSM: ${{ inputs.osm || 'https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Eingaben prüfen
+        run: |
+          echo "$ID" | grep -Eq '^[a-z]{3,20}$' || { echo "id: nur 3-20 Kleinbuchstaben"; exit 1; }
+          echo "$BBOX" | grep -Eq '^-?[0-9.]+,-?[0-9.]+,-?[0-9.]+,-?[0-9.]+$' || { echo "bbox: W,S,E,N"; exit 1; }
+      - name: Werkzeuge installieren
+        run: |
+          sudo apt-get update && sudo apt-get install -y osmium-tool gdal-bin
+          pip install numpy scipy rasterio shapely pyproj
+      - name: Höhenmodell (Copernicus GLO-30) laden
+        run: |
+          mkdir -p dem
+          python3 - <<'PY' > dem-tiles.txt
+          import math, os
+          w, s, e, n = map(float, os.environ["BBOX"].split(","))
+          for lat in range(math.floor(s) - 1, math.ceil(n) + 1):
+              for lon in range(math.floor(w) - 1, math.ceil(e) + 1):
+                  ns = f"N{lat:02d}" if lat >= 0 else f"S{-lat:02d}"
+                  ew = f"E{lon:03d}" if lon >= 0 else f"W{-lon:03d}"
+                  print(f"Copernicus_DSM_COG_10_{ns}_00_{ew}_00_DEM")
+          PY
+          while read -r t; do
+            curl -sSfL -o "dem/$t.tif" "https://copernicus-dem-30m.s3.amazonaws.com/$t/$t.tif" || echo "fehlt: $t"
+          done < dem-tiles.txt
+          gdalbuildvrt dem.vrt dem/*.tif
+      - name: OSM laden und ausschneiden
+        run: |
+          curl -sSfL -o src.osm.pbf "$OSM"
+          ext=$(python3 -c "w,s,e,n=map(float,'$BBOX'.split(','));print(f'{w-0.15},{s-0.1},{e+0.15},{n+0.1}')")
+          osmium extract -s smart -b "$ext" src.osm.pbf -o area.osm.pbf
+          rm src.osm.pbf
+          osmium tags-filter area.osm.pbf \
+            w/highway wa/building \
+            wa/landuse wa/leisure wa/natural=wetland wa/tourism=camp_site,caravan_site \
+            wa/amenity=parking wa/military wa/aeroway=aerodrome \
+            wa/boundary=national_park,protected_area \
+            -o filtered.osm.pbf
+          osmium export filtered.osm.pbf -f geojsonseq -o area.geojsonseq
+          ls -lh area.osm.pbf area.geojsonseq
+      - name: Bodenraster aus WorldCover
+        run: python3 scripts/prep_worldcover.py --bbox "$BBOX" --osm area.geojsonseq --out landcover.tif
+      - name: Eignungskarte berechnen
+        run: |
+          mkdir -p grids
+          python3 scripts/build_camp.py region --bbox "$BBOX" --nmd landcover.tif --dem dem.vrt \
+            --osm area.geojsonseq --out "camp-$ID.json" --grid "grids/eignung-$ID.bin"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eignung-${{ env.ID }}
+          path: |
+            grids/
+            camp-*.json
+      - name: Im Release "data-latest" veröffentlichen
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download data-latest -p eignung-tests.json -O old.json 2>/dev/null || echo '[]' > old.json
+          python3 - <<'PY'
+          import json, os
+          lst = [r for r in json.load(open("old.json")) if r["id"] != os.environ["ID"]]
+          bbox = [float(v) for v in os.environ["BBOX"].split(",")]
+          lst.append({"id": os.environ["ID"], "name": os.environ["NAME"], "bbox": bbox})
+          json.dump(lst, open("eignung-tests.json", "w"), ensure_ascii=False)
+          print(lst)
+          PY
+          gh release upload data-latest "grids/eignung-$ID.bin" eignung-tests.json --clobber

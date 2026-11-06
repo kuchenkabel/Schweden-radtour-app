@@ -1,7 +1,9 @@
 import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
 import { bearingDeg, haversineKm, type LonLat } from "./geo";
+import { getJson } from "./http";
 import { REGIONS, type Region } from "./regions";
+import { load, save } from "./store";
 
 /** Eignungskarten (Wildcamping) pro Region, GitHub-Release data-latest. */
 export const EIGNUNG_BASE = "https://github.com/kuchenkabel/schweden-radtour-app/releases/download/data-latest";
@@ -186,8 +188,25 @@ export function scan(grid: Grid, center: LonLat, radiusM: number, maxSpots = 5, 
   return { here, spots, suitableCount, landCount };
 }
 
+/** Testgebiete außerhalb Schwedens (z.B. Deutschland, "als ob Jedermannsrecht gälte"),
+ * gebaut von .github/workflows/camp-test.yml, Liste in data-latest/eignung-tests.json. */
+let testRegions: Region[] = [];
+
+export async function loadTestRegions(): Promise<void> {
+  testRegions = await load<Region[]>("eignungTests", []);
+  try {
+    const list = await getJson(`${EIGNUNG_BASE}/eignung-tests.json`);
+    if (Array.isArray(list)) {
+      testRegions = list.map((r: any) => ({ id: String(r.id), name: String(r.name), bbox: r.bbox, hint: "Testgebiet" }));
+      await save("eignungTests", testRegions);
+    }
+  } catch { /* offline oder keine Testgebiete: zwischengespeicherte Liste */ }
+}
+
+const allRegions = () => [...REGIONS, ...testRegions];
+
 export function regionFor(lon: number, lat: number): Region | null {
-  return REGIONS.find((r) => lon >= r.bbox[0] && lon <= r.bbox[2] && lat >= r.bbox[1] && lat <= r.bbox[3]) ?? null;
+  return allRegions().find((r) => lon >= r.bbox[0] && lon <= r.bbox[2] && lat >= r.bbox[1] && lat <= r.bbox[3]) ?? null;
 }
 
 // ---------- Laden / Speichern ----------
@@ -224,7 +243,7 @@ export async function deleteEignung(id: string): Promise<void> {
 export async function loadGrid(regionId: string): Promise<Grid> {
   const hit = cache.get(regionId);
   if (hit) { remember(regionId, hit); return hit; }
-  const name = REGIONS.find((r) => r.id === regionId)?.name ?? regionId;
+  const name = allRegions().find((r) => r.id === regionId)?.name ?? regionId;
   const fail = () => new Error(`Eignungskarte für ${name} nicht verfügbar – einmal mit Internet öffnen`);
   try {
     let buf: ArrayBuffer | null = null;
