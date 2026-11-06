@@ -11,7 +11,7 @@ import { brouterRoute, parseGpx, toGpx } from "./route";
 import { feasibleKm, headwind, smhiFireRisk, smhiForecast, windDirName, type WeatherHour } from "./weather";
 import { compareRegions, REGIONS, type Region } from "./regions";
 import { BLANK_STYLE, createMap, offlineStyle, ONLINE_STYLE, type MapView, type SatOptions } from "./map";
-import { compass, loadGrid, regionFor, scan, type ScanResult } from "./eignung";
+import { compass, loadGrid, loadTestRegions, regionFor, scan, type ScanResult } from "./eignung";
 import { deletePack, downloadPack, isOnline, listPacks, type TilePack } from "./offline";
 import {
   exportPlanFile, importPlanFile, loadChecks, loadCustomItems, loadPeople, loadPlan, saveChecks, saveCustomItems,
@@ -1136,6 +1136,7 @@ async function init() {
   setTab(S.plan.line.length > 1 ? "unterwegs" : "planen");
 
   S.online = await isOnline();
+  loadTestRegions();
   await chooseMapStyle();
   if (wantSat) await setSat(true);
   window.addEventListener("online", async () => { S.online = await isOnline(); chooseMapStyle(); refreshWeather(); render(); });
