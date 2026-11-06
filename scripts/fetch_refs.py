@@ -68,8 +68,16 @@ def fetch_nv():
     if not layer:
         raise RuntimeError(f"keine Anordnungs-Ebene gefunden: {names}")
     print(f"NV-Ebene: {layer}", file=sys.stderr)
+    # Ausgabeformate aus den Capabilities (GetFeature -> outputFormat)
+    gf = caps[caps.find('name="GetFeature"'):]
+    fmt_block = gf[gf.find('name="outputFormat"'):]
+    fmt_block = fmt_block[:fmt_block.find("</ows:Parameter>")]
+    formats = re.findall(r"<ows:Value>([^<]+)</ows:Value>", fmt_block)
+    print(f"  NV-Formate: {formats}", file=sys.stderr)
+    tries = [f for f in formats if "json" in f.lower()] + [
+        "application/json", "application/geo+json", "application/json; subtype=geojson", "geojson", "json"]
     fc, errors = None, []
-    for fmt in ("application/json", "json"):
+    for fmt in dict.fromkeys(tries):
         q = urllib.parse.urlencode({
             "service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
             "outputFormat": fmt, "srsName": "EPSG:4326",
@@ -79,7 +87,7 @@ def fetch_nv():
             fc = json.loads(body)
             break
         except ValueError:
-            errors.append(body[:300].decode("utf-8", "replace"))
+            errors.append(f"{fmt}: " + body[:200].decode("utf-8", "replace").replace("\n", " "))
     if fc is None:
         raise RuntimeError("WFS-Antwort ist kein GeoJSON: " + " | ".join(errors))
     out = []
