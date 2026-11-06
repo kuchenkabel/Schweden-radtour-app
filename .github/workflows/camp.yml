@@ -92,7 +92,7 @@ jobs:
           ls -lh filtered.osm.pbf
       - name: Kandidaten je Region berechnen
         run: |
-          mkdir -p out
+          mkdir -p out grids
           while read -r id bbox; do
             echo "::group::$id"
             IFS=, read -r w s e n <<< "$bbox"
@@ -100,7 +100,7 @@ jobs:
             osmium extract -s smart -b "$ext" filtered.osm.pbf -o "r-$id.osm.pbf" --overwrite
             osmium export "r-$id.osm.pbf" -f geojsonseq -o "r-$id.geojsonseq" --overwrite
             python3 scripts/build_camp.py region --bbox "$bbox" --nmd "$NMD" --dem dem.vrt \
-              --osm "r-$id.geojsonseq" --out "out/$id.json"
+              --osm "r-$id.geojsonseq" --out "out/$id.json" --grid "grids/eignung-$id.bin"
             rm "r-$id.osm.pbf" "r-$id.geojsonseq"
             echo "::endgroup::"
           done < regions.txt
@@ -120,7 +120,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: camp-sweden
-          path: camp-sweden.json.gz
+          path: |
+            camp-sweden.json.gz
+            grids/
       - name: Als Release "data-latest" veröffentlichen
         if: github.event_name != 'pull_request'
         env:
@@ -128,4 +130,4 @@ jobs:
         run: |
           gh release view data-latest >/dev/null 2>&1 || \
             gh release create data-latest --title "Datenpaket (automatisch)" --notes "POIs Schweden aus OpenStreetMap. Wird monatlich neu gebaut." --prerelease
-          gh release upload data-latest camp-sweden.json.gz camp-regions.tar.gz --clobber
+          gh release upload data-latest camp-sweden.json.gz camp-regions.tar.gz grids/eignung-*.bin --clobber

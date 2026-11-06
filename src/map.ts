@@ -59,6 +59,18 @@ export const BLANK_STYLE: StyleSpecification = {
   layers: [{ id: "bg", type: "background", paint: { "background-color": "#eef2e6" } }],
 };
 
+export interface SatOptions {
+  tiles: string;
+  maxzoom: number;
+  attribution: string;
+}
+
+export interface CheckOverlay {
+  center: LonLat;
+  radiusM: number;
+  spots: { lon: number; lat: number; label: string; color: string }[];
+}
+
 export interface MapView {
   map: MlMap;
   setStyle(style: string | StyleSpecification): void;
@@ -70,6 +82,13 @@ export interface MapView {
   onPoiClick(cb: (p: Poi) => void): void;
   fit(bbox: [number, number, number, number]): void;
   setPosition(p: LonLat | null): void;
+  /** Luftbild-Ebene unter den App-Ebenen; null = aus */
+  setSatellite(opts: SatOptions | null): void;
+  /** Prüfpunkt mit Kreis und nummerierten Stellen; null = löschen */
+  setCheck(c: CheckOverlay | null): void;
+  /** Nächster Karten-Tipp wird als Punktwahl gemeldet (statt POI-Klick) */
+  setPickMode(on: boolean): void;
+  onPick(cb: (p: LonLat) => void): void;
 }
 
 export function createMap(container: HTMLElement, style: string | StyleSpecification = ONLINE_STYLE): MapView {
@@ -93,7 +112,11 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     pois: [] as Poi[],
     visible: new Set<Cat>(),
     pos: null as LonLat | null,
+    sat: null as SatOptions | null,
+    check: null as CheckOverlay | null,
   };
+  let pickMode = false;
+  let pickCb: ((p: LonLat) => void) | null = null;
   let poiCb: ((p: Poi) => void) | null = null;
   let poiById = new Map<number, Poi>();
 
@@ -143,7 +166,51 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
       id: "pos", type: "circle", source: "pos",
       paint: { "circle-color": "#1976d2", "circle-radius": 8, "circle-stroke-color": "#fff", "circle-stroke-width": 3 },
     });
+    map.addSource("check", { type: "geojson", data: fc([]) });
+    map.addLayer({ id: "check-fill", type: "fill", source: "check", filter: ["==", ["get", "k"], "circle"], paint: { "fill-color": "#1976d2", "fill-opacity": 0.08 } });
+    map.addLayer({ id: "check-line", type: "line", source: "check", filter: ["==", ["get", "k"], "circle"], paint: { "line-color": "#1976d2", "line-width": 2, "line-dasharray": [2, 2] } });
+    map.addLayer({
+      id: "check-pts", type: "circle", source: "check", filter: ["!=", ["get", "k"], "circle"],
+      paint: { "circle-color": ["get", "color"], "circle-radius": ["case", ["==", ["get", "k"], "x"], 8, 12], "circle-stroke-color": "#fff", "circle-stroke-width": 2.5 },
+    });
+    map.addLayer({
+      id: "check-labels", type: "symbol", source: "check", filter: ["==", ["get", "k"], "spot"],
+      layout: { "text-field": ["get", "label"], "text-font": ["Noto Sans Medium"], "text-size": 12, "text-allow-overlap": true },
+      paint: { "text-color": "#fff" },
+    });
+    applySat();
     redraw();
+  }
+
+  function applySat() {
+    if (map.getLayer("sat")) map.removeLayer("sat");
+    if (map.getSource("sat")) map.removeSource("sat");
+    const o = state.sat;
+    if (!o || !map.getSource("route")) return;
+    map.addSource("sat", { type: "raster", tiles: [o.tiles], tileSize: 256, maxzoom: o.maxzoom, attribution: o.attribution });
+    map.addLayer({ id: "sat", type: "raster", source: "sat" }, "route-casing");
+  }
+
+  function circlePolygon(c: LonLat, rM: number) {
+    const kx = 111320 * Math.cos((c[1] * Math.PI) / 180), ky = 110574;
+    const ring: [number, number][] = [];
+    for (let a = 0; a <= 64; a++) {
+      const t = (a / 64) * 2 * Math.PI;
+      ring.push([c[0] + (rM * Math.sin(t)) / kx, c[1] + (rM * Math.cos(t)) / ky]);
+    }
+    return { type: "Polygon" as const, coordinates: [ring] };
+  }
+
+  function drawCheck() {
+    const src = map.getSource("check") as GeoJSONSource | undefined;
+    if (!src) return;
+    const c = state.check;
+    if (!c) return src.setData(fc([]));
+    src.setData(fc([
+      { type: "Feature", properties: { k: "circle" }, geometry: circlePolygon(c.center, c.radiusM) },
+      { type: "Feature", properties: { k: "x", color: "#d81b60" }, geometry: { type: "Point", coordinates: [c.center[0], c.center[1]] } },
+      ...c.spots.map((s) => ({ type: "Feature", properties: { k: "spot", label: s.label, color: s.color }, geometry: { type: "Point", coordinates: [s.lon, s.lat] } })),
+    ]));
   }
 
   function redraw() {
@@ -164,6 +231,7 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
       fc(state.waypoints.map((p) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [p[0], p[1]] } }))),
     );
     drawPois();
+    drawCheck();
     (map.getSource("pos") as GeoJSONSource).setData(
       fc(state.pos ? [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [state.pos[0], state.pos[1]] } }] : []),
     );
@@ -193,8 +261,16 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
   map.on("click", "pois", (e: any) => {
     const id = e.features?.[0]?.properties?.id;
     const p = id !== undefined ? poiById.get(Number(id)) : undefined;
-    if (p && poiCb) poiCb(p);
+    if (p && poiCb && !pickMode) poiCb(p);
   });
+  const pick = (e: any) => { pickCb?.([e.lngLat.lng, e.lngLat.lat]); };
+  map.on("click", (e: any) => {
+    if (!pickMode) return;
+    // Erst nach dem POI-Handler zurücksetzen, damit der Tipp kein POI öffnet
+    setTimeout(() => { pickMode = false; }, 0);
+    pick(e);
+  });
+  map.on("contextmenu", (e: any) => pick(e));
   map.on("mouseenter", "pois", () => (map.getCanvas().style.cursor = "pointer"));
   map.on("mouseleave", "pois", () => (map.getCanvas().style.cursor = ""));
 
@@ -213,6 +289,10 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     onPoiClick(cb) { poiCb = cb; },
     fit(b) { map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: 40, duration: 600 }); },
     setPosition(p) { state.pos = p; redraw(); },
+    setSatellite(opts) { state.sat = opts; applySat(); },
+    setCheck(c) { state.check = c; drawCheck(); },
+    setPickMode(on) { pickMode = on; map.getCanvas().style.cursor = on ? "crosshair" : ""; },
+    onPick(cb) { pickCb = cb; },
   };
 }
 

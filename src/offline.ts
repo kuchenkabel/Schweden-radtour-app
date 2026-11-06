@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
+import { deleteEignung, downloadEignung } from "./eignung";
 import { load, save } from "./store";
 
 /** Wo die Kartenpakete liegen (GitHub-Release, wird von .github/workflows/tiles.yml gebaut). */
@@ -38,6 +39,8 @@ export async function downloadPack(region: string, onProgress: (pct: number, mb:
   const packs = (await listPacks()).filter((p) => p.region !== region);
   packs.push(pack);
   await save("tilePacks", packs);
+  // Eignungskarte (Wildcamping) dazuladen, Fehler sind unkritisch
+  try { await downloadEignung(region); } catch { /* optional */ }
   return pack;
 }
 
@@ -47,6 +50,7 @@ export async function deletePack(region: string): Promise<void> {
   if (pack) {
     try { await Filesystem.deleteFile({ path: pack.path, directory: Directory.Data }); } catch { /* schon weg */ }
   }
+  await deleteEignung(region);
   await save("tilePacks", packs.filter((p) => p.region !== region));
 }
 
