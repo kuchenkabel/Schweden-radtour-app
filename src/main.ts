@@ -1157,6 +1157,24 @@ async function init() {
   startGps();
   refreshWeather();
   setInterval(refreshWeather, 30 * 60 * 1000);
+  selftest();
+}
+
+/** Nur für den Emulator-Test: lädt ein Kartenpaket wirklich herunter und meldet das Ergebnis im Log. */
+async function selftest() {
+  const region = await load<string>("selftestDownload", "");
+  if (!region) return;
+  await save("selftestDownload", "");
+  try {
+    const pack = await downloadPack(region, () => {});
+    // Datei muss lokal liegen (loadGrid würde sonst still nachladen)
+    const st = await Filesystem.stat({ path: `eignung/${region}.bin`, directory: Directory.Data });
+    const g = await loadGrid(region);
+    const eig = `${st.size} Bytes, ${g.header.nx}x${g.header.ny}`;
+    console.log(`[selftest] OK ${region} ${pack.bytes} Bytes, Eignung ${eig}`);
+  } catch (e) {
+    console.log(`[selftest] FEHLER ${region}: ${(e as Error).message}`);
+  }
 }
 
 init();
