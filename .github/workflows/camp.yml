@@ -103,7 +103,7 @@ jobs:
             echo "::group::$id"
             IFS=, read -r w s e n <<< "$bbox"
             ext=$(python3 -c "print(f'{$w-0.15},{$s-0.1},{$e+0.15},{$n+0.1}')")
-            osmium extract -s smart -b "$ext" filtered.osm.pbf -o "r-$id.osm.pbf" --overwrite
+            osmium extract -s smart -S types=multipolygon,boundary -b "$ext" filtered.osm.pbf -o "r-$id.osm.pbf" --overwrite
             osmium export "r-$id.osm.pbf" -f geojsonseq -o "r-$id.geojsonseq" --overwrite
             cat protected.geojsonseq >> "r-$id.geojsonseq"
             # FABDEM (Univ. Bristol, CC BY-NC-SA 4.0): ohne Bäume/Gebäude, sonst wirken Waldränder wie Hänge

@@ -85,16 +85,20 @@ jobs:
         run: |
           curl -sSfL -o src.osm.pbf "$OSM"
           ext=$(python3 -c "w,s,e,n=map(float,'$BBOX'.split(','));print(f'{w-0.15},{s-0.1},{e+0.15},{n+0.1}')")
-          osmium extract -s smart -b "$ext" src.osm.pbf -o area.osm.pbf
-          rm src.osm.pbf
-          osmium tags-filter area.osm.pbf \
+          # erst filtern, dann ausschneiden: so kann "smart" Schutzgebiets-Relationen
+          # (oft type=boundary statt multipolygon) vollständig übernehmen, auch wenn sie
+          # über den Rand reichen. Sonst fehlen sie beim Export ganz.
+          osmium tags-filter src.osm.pbf \
             w/highway wa/building \
             wa/landuse wa/leisure wa/natural=wetland wa/tourism=camp_site,caravan_site \
             wa/amenity=parking wa/military wa/aeroway=aerodrome \
             wa/boundary=national_park,protected_area \
-            -o filtered.osm.pbf
+            -o pre.osm.pbf
+          rm src.osm.pbf
+          osmium extract -s smart -S types=multipolygon,boundary -b "$ext" pre.osm.pbf -o filtered.osm.pbf
+          rm pre.osm.pbf
           osmium export filtered.osm.pbf -f geojsonseq -o area.geojsonseq
-          ls -lh area.osm.pbf area.geojsonseq
+          ls -lh filtered.osm.pbf area.geojsonseq
       - name: Bodenraster aus WorldCover
         run: |
           PR=""; for p in $PROBES; do PR="$PR --probe $p"; done
