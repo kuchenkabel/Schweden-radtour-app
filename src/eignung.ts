@@ -65,7 +65,7 @@ export const MEADOW = 6;
 export const MEADOW_HINT = "⚠️ Wiese: nur wenn gemäht und ungenutzt (kein Zaun, keine Heuballen), im Zweifel beim Hof fragen";
 export const HOUSE_RANGE = ["< 50 m", "50–100 m", "100–150 m", "150–200 m", "200–300 m", "300–500 m", "500–1000 m", "> 1 km"];
 export const SLOPE_RANGE = ["< 3°", "3–6°", "6–10°", "> 10°"];
-export const WAY_RANGE = ["< 25 m", "25–120 m", "120–300 m", "kein Weg < 300 m"];
+export const WAY_RANGE = ["zu nah (Pfad < 10 m, Straße < 25 m)", "bis 120 m", "120–300 m", "kein Weg < 300 m"];
 export const WATER_RANGE = ["< 30 m", "30–150 m", "150–400 m", "kein Wasser in der Nähe"];
 
 export interface Cell {
@@ -110,7 +110,7 @@ export function failReasons(c: Cell): string[] {
   if (c.ground === 7) r.push("bebaut, Fels oder Kahlschlag");
   if (c.house < 4) r.push(`Haus nur ${HOUSE_RANGE[c.house]} entfernt (Jedermannsrecht: außer Sichtweite, Faustregel ≥ 150–200 m)`);
   if (c.slope >= 2) r.push("Hang über 6°");
-  if (c.way === 0) r.push("direkt an Weg/Straße");
+  if (c.way === 0) r.push("zu nah am Weg (Pfad < 10 m, Straße < 25 m)");
   if (c.way === 3) r.push("kein Weg innerhalb 300 m");
   if (c.water === 0) r.push("zu nah am Ufer");
   if (c.bigRoad) r.push("große Straße < 150 m");

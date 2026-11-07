@@ -48,7 +48,7 @@ export interface DayPlan {
 
 /** Bevorzugung je Schlafplatz-Typ (kleiner = besser). */
 const SLEEP_PENALTY: Partial<Record<string, number>> = {
-  camping: 0, vindskydd: 2, stf: 3, huette: 4, hostel: 6, zeltplatz: 5,
+  camping: 0, lager: 1, vindskydd: 2, stf: 3, huette: 4, hostel: 6, zeltplatz: 5,
 };
 
 interface Node { km: number; poi: Poi | null; off: number }

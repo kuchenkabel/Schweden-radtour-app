@@ -3,7 +3,7 @@ import { cumulativeKm, haversineKm, projectOnLine, type LonLat } from "./geo";
 export type Cat =
   | "vindskydd" | "huette" | "camping" | "stf" | "hostel" | "badplats" | "spielplatz"
   | "wasser" | "wc" | "supermarkt" | "radladen" | "gas" | "apotek" | "vard" | "bahnhof"
-  | "unterstand" | "zeltplatz";
+  | "unterstand" | "zeltplatz" | "lager";
 
 export interface Poi {
   id: number;
@@ -18,6 +18,7 @@ export const CAT_INFO: Record<Cat, { label: string; icon: string; color: string;
   vindskydd: { label: "Vindskydd", icon: "⛺", color: "#2e7d32", sleep: true },
   huette: { label: "Hütte", icon: "🛖", color: "#558b2f", sleep: true },
   camping: { label: "Campingplatz", icon: "🏕️", color: "#00838f", sleep: true },
+  lager: { label: "Einfacher Zeltplatz", icon: "🏞️", color: "#2e7d32", sleep: true },
   stf: { label: "STF-Haus", icon: "🏠", color: "#1565c0", sleep: true },
   hostel: { label: "Hostel", icon: "🛏️", color: "#3949ab", sleep: true },
   badplats: { label: "Badestelle", icon: "🏊", color: "#0288d1" },

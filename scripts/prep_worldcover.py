@@ -5,7 +5,8 @@ build_camp.py erwartet die schwedische Marktäckedata (NMD, 10 m, EPSG:3006). Di
 nur für Schweden. Für Testgebiete (z.B. in Deutschland, "als ob dort Jedermannsrecht gälte")
 wird stattdessen ESA WorldCover 2021 (10 m, CC BY 4.0) gelesen, auf NMD-Klassen umgeschlüsselt
 und in SWEREF 99 TM umprojiziert. Gebäude aus OpenStreetMap werden als NMD-Klasse 51
-eingebrannt, weil WorldCover nur grobe "bebaute Fläche" kennt (einzelne Höfe fehlen oft).
+eingebrannt. WorldCovers "bebaute Fläche" zählt nicht als Haus, weil sie auch Wege und Plätze
+enthält (in Deutschland ist OSM bei Gebäuden nahezu vollständig).
 
 SWEREF 99 TM außerhalb Schwedens: in Deutschland (5-9 Grad westlich des Mittelmeridians)
 liegt der Maßstabsfehler bei 0,1-0,3 %, für 10-m-Raster ohne Belang.
@@ -37,7 +38,7 @@ LUT = {
     20: 42,   # Gebüsch -> offene Vegetation
     30: 42,   # Grasland -> offene Vegetation (Wiesen/Weiden schließt OSM aus, wenn so erfasst)
     40: 3,    # Acker
-    50: 51,   # bebaute Fläche -> Gebäude
+    50: 41,   # bebaute Fläche -> sonstiges (enthält Straßen/Plätze; Häuser kommen nur aus OSM)
     60: 41,   # kahl/spärlich bewachsen -> sonstiges
     70: 41,   # Schnee/Eis
     80: 61,   # Wasser
