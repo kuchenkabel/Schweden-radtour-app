@@ -57,8 +57,10 @@ def tiles_for(w, s, e, n):
     return out
 
 
-def load_buildings(path, to3006):
-    geoms = []
+def load_osm_layers(path, to3006, probes=()):
+    """Gebäude und Ackerflächen (landuse=farmland) aus OSM; druckt Flächen an Prüfpunkten."""
+    houses, farmland = [], []
+    pts = [(lat, lon, shapely.Point(*to3006.transform(lon, lat))) for lat, lon in probes]
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip().lstrip("\x1e")
@@ -67,15 +69,26 @@ def load_buildings(path, to3006):
             feat = json.loads(line)
             p = feat.get("properties") or {}
             b = p.get("building")
-            if not b or b in ("no", "roof", "ruins", "construction") or not feat.get("geometry"):
+            is_house = b and b not in ("no", "roof", "ruins", "construction")
+            is_farm = p.get("landuse") == "farmland"
+            if not (is_house or is_farm or pts) or not feat.get("geometry"):
                 continue
             try:
                 g = shape(feat["geometry"])
             except Exception:
                 continue
             g = shapely.transform(g, lambda c: np.column_stack(to3006.transform(c[:, 0], c[:, 1])))
-            geoms.append(g)
-    return geoms
+            if is_house:
+                houses.append(g)
+            if is_farm and g.geom_type in ("Polygon", "MultiPolygon"):
+                farmland.append(g)
+            for lat, lon, pt in pts:
+                if g.geom_type in ("Polygon", "MultiPolygon") and g.distance(pt) <= 60:
+                    keep = {k: v for k, v in p.items() if k in ("landuse", "natural", "leisure", "landcover", "meadow", "crop", "name", "access", "@id", "building", "highway")}
+                    if keep and not keep.keys() <= {"@id", "name"}:
+                        where = "enthält Punkt" if g.contains(pt) else f"{g.distance(pt):.0f} m"
+                        print(f"  Prüfpunkt {lat},{lon}: {where}: {keep}", file=sys.stderr)
+    return houses, farmland
 
 
 def main():
@@ -83,6 +96,7 @@ def main():
     ap.add_argument("--bbox", required=True)
     ap.add_argument("--osm", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--probe", action="append", default=[], help="lat,lon: OSM-Flächen dort ausgeben")
     a = ap.parse_args()
     w, s, e, n = map(float, a.bbox.split(","))
     to3006 = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
@@ -117,7 +131,16 @@ def main():
     hist = {k: round(float((wc == k).mean()) * 100, 1) for k in LUT if (wc == k).any()}
     print(f"  WorldCover-Anteile (%): {hist}", file=sys.stderr)
 
-    houses = load_buildings(a.osm, to3006)
+    probes = [tuple(map(float, p.split(","))) for p in a.probe]
+    houses, farmland = load_osm_layers(a.osm, to3006, probes)
+    # WorldCover verwechselt in Mitteleuropa oft Wiesen mit Acker. Wo OSM Ackerflächen
+    # erfasst hat, gilt nur OSM: Acker = landuse=farmland, übriges "Acker" wird Grasland.
+    if len(farmland) >= 20:
+        fm = rasterize(((g, 1) for g in farmland), out_shape=(H, W), transform=tr, dtype="uint8").astype(bool)
+        moved = (nmd == 3) & ~fm
+        nmd[moved] = 42
+        nmd[fm & np.isin(nmd, [42, 3])] = 3
+        print(f"  OSM-Ackerflächen: {len(farmland)}, {moved.mean() * 100:.1f} % von Acker zu Grasland", file=sys.stderr)
     if houses:
         m = rasterize(((g, 1) for g in houses), out_shape=(H, W), transform=tr, all_touched=True, dtype="uint8")
         nmd[m.astype(bool)] = 51

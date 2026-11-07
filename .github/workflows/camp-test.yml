@@ -14,6 +14,10 @@ on:
       bbox:
         description: "W,S,E,N in Grad (ca. 20 x 20 km)"
         required: true
+      probes:
+        description: "Prüfpunkte lat,lon (Leerzeichen-getrennt), OSM-Flächen dort im Log"
+        required: false
+        default: ""
       dem:
         description: "Höhenmodell: fabdem (ohne Bäume/Gebäude) oder copernicus (Oberfläche)"
         required: false
@@ -40,6 +44,7 @@ jobs:
       ID: ${{ inputs.id || 'prtest' }}
       NAME: ${{ inputs.name || 'PR-Test' }}
       BBOX: ${{ inputs.bbox || '8.93,50.16,9.02,50.22' }}
+      PROBES: ${{ inputs.probes || '50.19272,8.97317' }}
       DEM: ${{ inputs.dem || 'fabdem' }}
       OSM: ${{ inputs.osm || 'https://download.geofabrik.de/europe/germany/hessen-latest.osm.pbf' }}
     steps:
@@ -91,7 +96,9 @@ jobs:
           osmium export filtered.osm.pbf -f geojsonseq -o area.geojsonseq
           ls -lh area.osm.pbf area.geojsonseq
       - name: Bodenraster aus WorldCover
-        run: python3 scripts/prep_worldcover.py --bbox "$BBOX" --osm area.geojsonseq --out landcover.tif
+        run: |
+          PR=""; for p in $PROBES; do PR="$PR --probe $p"; done
+          python3 scripts/prep_worldcover.py --bbox "$BBOX" --osm area.geojsonseq --out landcover.tif $PR
       - name: Eignungskarte berechnen
         run: |
           mkdir -p grids
