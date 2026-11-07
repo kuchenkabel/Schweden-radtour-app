@@ -1,8 +1,8 @@
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { cellAt, compass, decodeCell, decodeGrid, regionFor, scan, type Grid } from "./eignung";
+import { cellAt, compass, decodeCell, decodeGrid, MEADOW, MEADOW_HINT, regionFor, scan, type Grid } from "./eignung";
 
-const header = { v: 1, w: 14, n: 56, dlon: 0.0008, dlat: 0.00045, nx: 40, ny: 40, cell: 50 };
+let header = { v: 1, w: 14, n: 56, dlon: 0.0008, dlat: 0.00045, nx: 40, ny: 40, cell: 50 };
 
 /** bits: Untergrund g, Haus h, Hang s, Weg w, Wasser a, Flags */
 const cell = (g: number, h: number, s: number, w: number, a: number, flags = 0) =>
@@ -79,7 +79,7 @@ describe("eignung", () => {
   it("reports failure reasons for moor", async () => {
     const g = await grid();
     const r = scan(g, [lonOf(1), latOf(1)], 100);
-    expect(r.here.reasons).toContain("Moor/Sumpf");
+    expect(r.here.reasons).toContain("Moor, Sumpf oder Acker – nicht zelten");
     expect(r.here.reasons).toContain("kein Weg innerhalb 300 m");
   });
 
@@ -88,5 +88,20 @@ describe("eignung", () => {
     expect(regionFor(0, 0)).toBeNull();
     expect(compass(45)).toBe("NO");
     expect(compass(359)).toBe("N");
+  });
+
+  it("maps v1 Acker to 'Moor oder Acker' and keeps v2 Wiese", async () => {
+    const v1 = await decodeGrid(build(() => cell(6, 7, 0, 1, 1)));
+    expect(decodeCell(v1.data[0]).ground).toBe(5);
+    header = { ...header, v: 2 };
+    try {
+      const v2 = await decodeGrid(build((i, j) => (i === 20 && j === 20 ? cell(MEADOW, 7, 0, 1, 1, 0x8000) : cell(5, 7, 0, 3, 3))));
+      expect(decodeCell(v2.data[20 * 40 + 20]).ground).toBe(MEADOW);
+      const r = scan(v2, [lonOf(20), latOf(20)], 300);
+      expect(r.here.suitable).toBe(true);
+      expect(r.spots[0].reasons).toContain(MEADOW_HINT);
+    } finally {
+      header = { ...header, v: 1 };
+    }
   });
 });
