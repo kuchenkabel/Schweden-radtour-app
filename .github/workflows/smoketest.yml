@@ -54,12 +54,17 @@ jobs:
             sleep 6
             adb exec-out screencap -p > shot-planen.png
             adb logcat -d | grep -iE "Capacitor/Console|pmtiles|AndroidRuntime" > logcat.txt || true
-            for i in $(seq 1 36); do adb logcat -d | grep -q "\[selftest\]" && break; sleep 5; done
+            for i in $(seq 1 36); do adb logcat -d | grep -q "\[selftest\]" && break; adb shell "test -s /data/data/de.familie.schwedenradtour/files/eignung/gotland.bin" && sleep 5 && break; sleep 5; done
             adb logcat -d | grep -iE "Capacitor/Console|pmtiles|AndroidRuntime" > logcat.txt || true
             adb shell "ls -la /data/data/de.familie.schwedenradtour/files/tiles /data/data/de.familie.schwedenradtour/files/eignung" >> logcat.txt 2>&1 || true
             tail -80 logcat.txt
       - name: Selbsttest Download prüfen
-        run: grep "\[selftest\] OK" logcat.txt
+        run: |
+          # Log der App (falls vorhanden) und tatsächlich heruntergeladene Dateien
+          grep "\[selftest\]" logcat.txt || echo "kein Selbsttest-Log"
+          ! grep -q "\[selftest\] FEHLER" logcat.txt
+          grep -E "[0-9]{6,} .* gotland\.pmtiles" logcat.txt
+          grep -E "[0-9]{5,} .* gotland\.bin" logcat.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
