@@ -25,6 +25,7 @@ SOURCES = [
     ("https://geodata.naturvardsverket.se/n2000/wfs", "N2000", False),
 ]
 PAGE = 2000
+CAP = 2000  # beobachtete Höchstzahl je Abfrage beim Naturvårdsregistret-WFS
 
 
 def get(url, timeout=300):
@@ -55,19 +56,16 @@ def first(props, *keys):
     return ""
 
 
-def fetch(base, want):
-    layer, fmts = capabilities(base, want)
-    print(f"{base}: Ebene {layer}", file=sys.stderr)
-    fmt = None
+def fetch_paged(base, layer, fmts, extra=None, fmt=None):
+    """Alle Seiten einer Abfrage; gibt (Flächen, benutztes Format) zurück."""
     out, start = [], 0
     while True:
         fc = None
         for f in ([fmt] if fmt else list(dict.fromkeys(fmts))):
-            q = urllib.parse.urlencode({
-                "service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
-                "outputFormat": f, "srsName": "EPSG:4326", "count": PAGE, "startIndex": start,
-            })
-            body = get(f"{base}?{q}")
+            q = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
+                 "outputFormat": f, "srsName": "EPSG:4326", "count": PAGE, "startIndex": start}
+            q.update(extra or {})
+            body = get(f"{base}?{urllib.parse.urlencode(q)}")
             try:
                 fc = json.loads(body)
                 fmt = f
@@ -79,11 +77,69 @@ def fetch(base, want):
         feats = fc.get("features") or []
         out.extend(feats)
         total = fc.get("numberMatched") or fc.get("totalFeatures")
-        print(f"  {len(out)} von {total or '?'} Flächen", file=sys.stderr)
         # Server begrenzen die Seitengröße teils selbst (z.B. 500): weiter, bis eine Seite leer ist
         if not feats or (isinstance(total, int) and len(out) >= total):
-            return out
+            return out, fmt
         start += len(feats)
+
+
+def lonlat(ft):
+    g = ft.get("geometry")
+    if not g or not g.get("coordinates"):
+        return None
+    c = swap_if_needed(g)["coordinates"]
+    while isinstance(c[0], list):
+        c = c[0]
+    return c[0], c[1]
+
+
+def inside(feats, w, s, e, n, tol=0.5):
+    pts = [p for p in map(lonlat, feats) if p]
+    ok = sum(1 for x, y in pts if w - tol <= x <= e + tol and s - tol <= y <= n + tol)
+    return pts and ok >= 0.8 * len(pts)
+
+
+def bbox_param(order, w, s, e, n):
+    if order == "latlon":
+        return {"bbox": f"{s},{w},{n},{e},urn:ogc:def:crs:EPSG::4326"}
+    return {"bbox": f"{w},{s},{e},{n},urn:ogc:def:crs:OGC:1.3:CRS84"}
+
+
+def fetch(base, want):
+    layer, fmts = capabilities(base, want)
+    print(f"{base}: Ebene {layer}", file=sys.stderr)
+    feats, fmt = fetch_paged(base, layer, fmts)
+    print(f"  ohne Ausschnitt: {len(feats)} Flächen", file=sys.stderr)
+    if len(feats) < CAP:
+        return feats
+    # Manche Server liefern höchstens CAP Flächen je Abfrage, auch beim Weiterblättern.
+    # Dann in Kacheln abfragen und Kacheln mit zu vielen Treffern weiter teilen.
+    order = None
+    for o in ("latlon", "lonlat"):
+        probe, _ = fetch_paged(base, layer, fmts, bbox_param(o, 17.5, 59.0, 19.0, 59.8), fmt)
+        print(f"  Achsenfolge {o}: {len(probe)} Flächen im Raum Stockholm", file=sys.stderr)
+        if inside(probe, 17.5, 59.0, 19.0, 59.8) and len(probe) < len(feats):
+            order = o
+            break
+    if not order:
+        raise RuntimeError("Abfrage mit Ausschnitt funktioniert nicht, mehr als %d Flächen nicht ladbar" % CAP)
+    seen = {}
+    todo = [(w, s, w + 3.5, s + 3.75, 0) for w in (10.5, 14.0, 17.5, 21.0) for s in (55.0, 58.75, 62.5, 66.25)]
+    while todo:
+        w, s, e, n, depth = todo.pop()
+        part, _ = fetch_paged(base, layer, fmts, bbox_param(order, w, s, e, n), fmt)
+        if len(part) >= CAP * 0.9:
+            if depth >= 8:
+                raise RuntimeError(f"Kachel {w},{s},{e},{n} hat zu viele Flächen")
+            mx, my = (w + e) / 2, (s + n) / 2
+            todo += [(w, s, mx, my, depth + 1), (mx, s, e, my, depth + 1),
+                     (w, my, mx, n, depth + 1), (mx, my, e, n, depth + 1)]
+            continue
+        for ft in part:
+            key = ft.get("id") or json.dumps(ft.get("properties"), sort_keys=True)
+            seen[key] = ft
+        print(f"  Kachel {w:.2f},{s:.2f}: {len(part)}, zusammen {len(seen)} Flächen", file=sys.stderr)
+    return list(seen.values())
 
 
 def swap_if_needed(geom):
@@ -126,7 +182,8 @@ def main(dst):
                 n[title] = n.get(title, 0) + 1
     print("Schutzgebiete:", json.dumps(n, ensure_ascii=False), file=sys.stderr)
     main_types = sum(v for k, v in n.items() if "reservat" in k.lower() or "nationalpark" in k.lower())
-    if main_types < 1000:
+    # Schweden hat über 5000 Naturreservate; deutlich weniger heißt: Laden unvollständig
+    if main_types < 4000:
         sys.exit(f"zu wenige Nationalparks/Naturreservate ({main_types}) – Abbruch, damit keine Karte ohne Schutzgebiete entsteht")
 
 
