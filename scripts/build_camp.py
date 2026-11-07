@@ -10,7 +10,8 @@ Datenquellen (alle offen, ohne Anmeldung):
 
 Regeln (Faustregeln zum Jedermannsrecht, bewusst vorsichtig):
   * mindestens 200 m bis zum nächsten Gebäude (außer Sicht von Wohnhäusern)
-  * nicht auf Acker, Wiese, Weide, Garten, Moor; Abstand zu Acker und Moor
+  * nicht auf Acker, Weide, Garten, Moor; Abstand zu Acker und Moor
+  * Wiesen (OSM landuse=meadow) zählen bedingt: nur wenn gemäht und ungenutzt (App warnt)
   * Wald auf festem Boden oder offenes Grasland/Heide
   * Neigung höchstens 6 Grad (geglättet, Höhenmodell ist grob)
   * Weg/Zufahrt 25 bis 300 m entfernt, mindestens 25 m von jedem Weg, 150 m von größeren Straßen
@@ -25,7 +26,8 @@ Mit --grid schreibt "region" zusätzlich eine Eignungskarte (50-m-Raster in WGS8
 "Punkt prüfen" in der App. Format (eignung-<id>.bin):
   b"EIG1", uint32 LE Header-Länge, Header-JSON {"w","n","dlon","dlat","nx","ny","cell","v"},
   danach zlib-komprimiert ny*nx uint16 LE, Zeile 0 = Norden. Bits je Zelle (GRID_BITS):
-  0-2 Untergrund, 3-5 Hausabstand, 6-7 Neigung, 8-9 Weg, 10-11 Wasser,
+  0-2 Untergrund (v2: 0 Wasser, 1 Kiefer, 2 Nadel/Misch, 3 Laub, 4 Gras/Heide, 5 Moor oder Acker,
+  6 Wiese, 7 sonstiges; v1: 5 Moor, 6 Acker), 3-5 Hausabstand, 6-7 Neigung, 8-9 Weg, 10-11 Wasser,
   12 Schutzgebiet, 13 Nutzfläche/Moor/Acker zu nah, 14 große Straße < 150 m, 15 alle Regeln erfüllt.
 """
 import argparse
@@ -59,6 +61,8 @@ FAR = 9999
 FOREST_FIRM = {111: 1.0, 113: 0.85, 114: 0.8, 115: 0.75, 116: 0.7, 117: 0.7, 112: 0.55}
 OPEN_VEG = 42
 OPEN_VEG_Q = 0.5
+MEADOW_Q = 0.4      # Wiese (OSM landuse=meadow): nur wenn gemäht und ungenutzt, App warnt
+MEADOW_CODE = 200   # Untergrund-Code der Kandidatenpunkte für Wiesen
 WET = [2, 121, 122, 123, 124, 125, 126, 127, 128]
 ARABLE = [3]
 BUILDING = [51]
@@ -78,7 +82,7 @@ MIN_SCORE = 55
 ACCESS_WAYS = {"track", "cycleway", "path", "bridleway", "footway", "unclassified"}
 MAJOR_WAYS = {"motorway", "trunk", "primary", "secondary", "tertiary",
               "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
-EXCLUDE_LANDUSE = {"residential", "farmyard", "farmland", "meadow", "orchard", "allotments", "cemetery",
+EXCLUDE_LANDUSE = {"residential", "farmyard", "farmland", "orchard", "allotments", "cemetery",
                    "military", "quarry", "industrial", "commercial", "retail", "construction", "landfill",
                    "railway", "garages", "vineyard", "plant_nursery", "grass", "recreation_ground", "animal_keeping"}
 EXCLUDE_LEISURE = {"golf_course", "park", "pitch", "garden", "sports_centre", "playground", "marina",
@@ -99,6 +103,8 @@ def classify_osm(t):
             or t.get("natural") == "wetland" or t.get("tourism") in ("camp_site", "caravan_site")
             or t.get("amenity") == "parking" or "military" in t or t.get("aeroway") == "aerodrome"):
         out.append("exclude")
+    if t.get("landuse") == "meadow":
+        out.append("meadow")
     if t.get("leisure") == "nature_reserve" or t.get("boundary") in ("national_park", "protected_area"):
         out.append("reserve")
     return out
@@ -106,7 +112,7 @@ def classify_osm(t):
 
 def load_osm(path, bounds3006):
     to3006 = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
-    groups = {k: [] for k in ("access", "road", "major", "exclude", "reserve")}
+    groups = {k: [] for k in ("access", "road", "major", "exclude", "reserve", "meadow")}
     clip = box(*bounds3006)
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -128,7 +134,7 @@ def load_osm(path, bounds3006):
                 continue
             for c in cls:
                 # Flächen nur für exclude/reserve, Linien (auch Umrisse) für Wege
-                if c in ("exclude", "reserve") and g.geom_type not in ("Polygon", "MultiPolygon"):
+                if c in ("exclude", "reserve", "meadow") and g.geom_type not in ("Polygon", "MultiPolygon"):
                     continue
                 groups[c].append(g)
     trees = {k: (shapely.STRtree(v), v) for k, v in groups.items()}
@@ -160,7 +166,8 @@ def bucket(v, edges):
     return np.digitize(v, edges).astype(np.uint16)
 
 
-def encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable, excl, res, d_major, cand):
+def encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable, excl, res, d_major, cand, meadow):
+    # Untergrund (Version 2): 5 = Moor/Sumpf oder Acker, 6 = Wiese
     g = np.full(nmd.shape, 7, np.uint16)  # 7 = bebaut/Fels/Kahlschlag/sonstiges
     g[np.isin(nmd, WATER + [0])] = 0
     g[nmd == 111] = 1
@@ -168,7 +175,8 @@ def encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable, e
     g[np.isin(nmd, [115, 116, 117])] = 3
     g[nmd == OPEN_VEG] = 4
     g[np.isin(nmd, WET)] = 5
-    g[np.isin(nmd, ARABLE)] = 6
+    g[np.isin(nmd, ARABLE)] = 5
+    g[meadow] = 6
     house = bucket(d_house, [50, 100, 150, 200, 300, 500, 1000])
     slp = bucket(slope, [3, 6, 10])
     way = np.where(d_road < MIN_ACCESS, 0, np.where(d_acc <= 120, 1, np.where(d_acc <= MAX_ACCESS, 2, 3))).astype(np.uint16)
@@ -220,7 +228,7 @@ def sample_grid(code, score, bx0, by1, x0, y0, b):
 
 def write_grid(path, grid, gw, gn, dlon, dlat):
     ny, nx = grid.shape
-    header = json.dumps({"v": 1, "w": gw, "n": gn, "dlon": dlon, "dlat": dlat, "nx": nx, "ny": ny,
+    header = json.dumps({"v": 2, "w": gw, "n": gn, "dlon": dlon, "dlat": dlat, "nx": nx, "ny": ny,
                          "cell": GRID_CELL}).encode()
     with open(path, "wb") as f:
         f.write(b"EIG1" + struct.pack("<I", len(header)) + header)
@@ -260,11 +268,13 @@ def process_tile(origin):
     major = raster_of(trees, "major", bounds, (H, W), tr)
     excl = raster_of(trees, "exclude", bounds, (H, W), tr)
     res = raster_of(trees, "reserve", bounds, (H, W), tr)
+    # Wiese laut OSM auf offenem Land (NMD zählt Heuwiesen oft als Acker)
+    meadow = raster_of(trees, "meadow", bounds, (H, W), tr) & np.isin(nmd, [OPEN_VEG] + ARABLE)
 
     d_house = dist(np.isin(nmd, BUILDING))
     d_water = dist(np.isin(nmd, WATER))
     d_wet = dist(np.isin(nmd, WET))
-    d_arable = dist(np.isin(nmd, ARABLE))
+    d_arable = dist(np.isin(nmd, ARABLE) & ~meadow)
     d_acc = dist(acc)
     d_road = dist(road | np.isin(nmd, ROADLIKE))
     d_major = dist(major)
@@ -273,6 +283,7 @@ def process_tile(origin):
     for code, q in FOREST_FIRM.items():
         ground_q[nmd == code] = q
     ground_q[nmd == OPEN_VEG] = OPEN_VEG_Q
+    ground_q[meadow] = MEADOW_Q
 
     cand = ((ground_q > 0) & ~excl
             & (d_house >= MIN_HOUSE) & (slope <= MAX_SLOPE)
@@ -291,7 +302,7 @@ def process_tile(origin):
 
     if G.get("grid"):
         code = encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable,
-                            excl, res, d_major, cand)
+                            excl, res, d_major, cand, meadow)
         samples = sample_grid(code, score, bx0, by1, x0, y0, b)
     else:
         samples = None
@@ -319,7 +330,7 @@ def process_tile(origin):
                 f"{int(x // CELL)}:{int(y // CELL)}",
                 round(lat * 1e5), round(lon * 1e5), int(round(v)),
                 int(min(d_house[r, c], FAR)), int(round(slope[r, c] * 10)),
-                dw if dw <= 2000 else FAR, int(d_acc[r, c]), int(nmd[r, c]), int(res[r, c]),
+                dw if dw <= 2000 else FAR, int(d_acc[r, c]), MEADOW_CODE if meadow[r, c] else int(nmd[r, c]), int(res[r, c]),
             ])
     return out, samples
 

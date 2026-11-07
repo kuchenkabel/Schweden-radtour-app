@@ -177,7 +177,7 @@ export async function loadPois(url = "data/pois-sweden.bin"): Promise<PoiIndex> 
 
 const CAMP_GROUND: Record<number, string> = {
   111: "Kiefernwald", 112: "Fichtenwald", 113: "Nadel-Mischwald", 114: "Mischwald",
-  115: "Laubwald", 116: "Edellaubwald", 117: "Laub-/Edellaubwald", 42: "offenes Grasland/Heide",
+  115: "Laubwald", 116: "Edellaubwald", 117: "Laub-/Edellaubwald", 42: "offenes Grasland/Heide", 200: "Wiese (nur wenn gemäht und ungenutzt)",
 };
 
 /** Lädt die Zeltplatz-Kandidaten (optional) und fügt sie dem Index hinzu. */

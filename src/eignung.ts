@@ -40,6 +40,8 @@ export async function decodeGrid(buf: ArrayBuffer): Promise<Grid> {
   const data = new Uint16Array(n);
   const dv = new DataView(raw);
   for (let i = 0; i < n; i++) data[i] = dv.getUint16(i * 2, true);
+  // Version 1 kannte keine Wiese: Untergrund 6 war Acker, jetzt 5 (Moor oder Acker)
+  if ((header.v ?? 1) < 2) for (let i = 0; i < n; i++) if ((data[i] & 7) === 6) data[i] = (data[i] & ~7) | 5;
   return { header, data };
 }
 
@@ -57,7 +59,10 @@ export function cellAt(grid: Grid, lon: number, lat: number): number | null {
   return c ? grid.data[c.i * grid.header.nx + c.j] : null;
 }
 
-export const GROUND = ["Wasser/keine Daten", "Kiefernwald", "Nadel-/Mischwald", "Laubwald", "offenes Gras/Heide", "Moor/Sumpf", "Acker", "bebaut/Fels/Kahlschlag"];
+export const GROUND = ["Wasser/keine Daten", "Kiefernwald", "Nadel-/Mischwald", "Laubwald", "offenes Gras/Heide", "Moor, Sumpf oder Acker", "Wiese", "bebaut/Fels/Kahlschlag"];
+/** Untergrund-Code für Wiesen (OSM landuse=meadow): geeignet nur, wenn gemäht und ungenutzt. */
+export const MEADOW = 6;
+export const MEADOW_HINT = "⚠️ Wiese: nur wenn gemäht und ungenutzt (kein Zaun, keine Heuballen), im Zweifel beim Hof fragen";
 export const HOUSE_RANGE = ["< 50 m", "50–100 m", "100–150 m", "150–200 m", "200–300 m", "300–500 m", "500–1000 m", "> 1 km"];
 export const SLOPE_RANGE = ["< 3°", "3–6°", "6–10°", "> 10°"];
 export const WAY_RANGE = ["< 25 m", "25–120 m", "120–300 m", "kein Weg < 300 m"];
@@ -94,15 +99,14 @@ export function cellScore(c: Cell): number {
   const slope = c.slope === 0 ? 1 : c.slope === 1 ? 0.5 : 0;
   const water = c.water === 1 ? 1 : c.water === 2 ? 0.5 : 0;
   const way = c.way === 1 ? 1 : c.way === 2 ? 0.6 : 0;
-  const ground = c.ground === 1 ? 1 : c.ground === 2 ? 0.8 : c.ground === 3 ? 0.75 : c.ground === 4 ? 0.5 : 0;
+  const ground = c.ground === 1 ? 1 : c.ground === 2 ? 0.8 : c.ground === 3 ? 0.75 : c.ground === 4 ? 0.5 : c.ground === MEADOW ? 0.4 : 0;
   return Math.round(35 * house + 20 * slope + 15 * water + 15 * way + 15 * ground - (c.reserve ? 10 : 0));
 }
 
 export function failReasons(c: Cell): string[] {
   const r: string[] = [];
   if (c.ground === 0) r.push("Wasser/keine Daten");
-  if (c.ground === 5) r.push("Moor/Sumpf");
-  if (c.ground === 6) r.push("Acker – nicht betreten");
+  if (c.ground === 5) r.push("Moor, Sumpf oder Acker – nicht zelten");
   if (c.ground === 7) r.push("bebaut, Fels oder Kahlschlag");
   if (c.house < 4) r.push(`Haus nur ${HOUSE_RANGE[c.house]} entfernt (Jedermannsrecht: außer Sichtweite, Faustregel ≥ 150–200 m)`);
   if (c.slope >= 2) r.push("Hang über 6°");
@@ -124,6 +128,7 @@ export function spotReasons(c: Cell): string[] {
     c.way === 3 ? "kein Weg < 300 m" : `Weg ${WAY_RANGE[c.way]}`,
     c.water === 3 ? "kein Wasser in der Nähe" : `Wasser ${WATER_RANGE[c.water]}`,
   ];
+  if (c.ground === MEADOW) r.push(MEADOW_HINT);
   if (c.reserve) r.push("⚠️ Schutzgebiet");
   return r;
 }
