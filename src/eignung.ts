@@ -62,6 +62,7 @@ export function cellAt(grid: Grid, lon: number, lat: number): number | null {
 export const GROUND = ["Wasser/keine Daten", "Kiefernwald", "Nadel-/Mischwald", "Laubwald", "offenes Gras/Heide", "Moor, Sumpf oder Acker", "Wiese", "bebaut/Fels/Kahlschlag"];
 /** Untergrund-Code für Wiesen (OSM landuse=meadow): geeignet nur, wenn gemäht und ungenutzt. */
 export const MEADOW = 6;
+export const RESERVE_HINT = "⚠️ Schutzgebiet (Nationalpark, Naturreservat oder Natura 2000): Zelten ist dort oft eingeschränkt oder verboten – Schilder und Vorschriften des Gebiets prüfen";
 export const MEADOW_HINT = "⚠️ Wiese: nur wenn gemäht und ungenutzt (kein Zaun, keine Heuballen), im Zweifel beim Hof fragen";
 export const HOUSE_RANGE = ["< 50 m", "50–100 m", "100–150 m", "150–200 m", "200–300 m", "300–500 m", "500–1000 m", "> 1 km"];
 export const SLOPE_RANGE = ["< 3°", "3–6°", "6–10°", "> 10°"];
@@ -129,7 +130,7 @@ export function spotReasons(c: Cell): string[] {
     c.water === 3 ? "kein Wasser in der Nähe" : `Wasser ${WATER_RANGE[c.water]}`,
   ];
   if (c.ground === MEADOW) r.push(MEADOW_HINT);
-  if (c.reserve) r.push("⚠️ Schutzgebiet");
+  if (c.reserve) r.push(RESERVE_HINT);
   return r;
 }
 
