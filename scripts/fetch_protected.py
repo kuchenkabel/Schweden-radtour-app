@@ -78,10 +78,12 @@ def fetch(base, want):
             raise RuntimeError("keine GeoJSON-Antwort")
         feats = fc.get("features") or []
         out.extend(feats)
-        print(f"  {len(out)} Flächen", file=sys.stderr)
-        if len(feats) < PAGE:
+        total = fc.get("numberMatched") or fc.get("totalFeatures")
+        print(f"  {len(out)} von {total or '?'} Flächen", file=sys.stderr)
+        # Server begrenzen die Seitengröße teils selbst (z.B. 500): weiter, bis eine Seite leer ist
+        if not feats or (isinstance(total, int) and len(out) >= total):
             return out
-        start += PAGE
+        start += len(feats)
 
 
 def swap_if_needed(geom):
