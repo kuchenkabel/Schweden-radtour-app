@@ -115,7 +115,7 @@ export function failReasons(c: Cell): string[] {
   if (c.water === 0) r.push("zu nah am Ufer");
   if (c.bigRoad) r.push("große Straße < 150 m");
   if (c.excluded) r.push("Acker/Moor/Wohngebiet in < 30 m");
-  if (!c.suitable && r.length === 0) r.push("Nicht alle Regeln erfüllt");
+  if (!c.suitable && r.length === 0) r.push("Freie Fläche zu klein: keine 30 × 30 m, die alle Abstände (Weg, Acker, Haus, Ufer) einhalten");
   return r;
 }
 
