@@ -6,5 +6,6 @@
     "LocalNotifications": {
       "iconColor": "#005b99"
     }
-  }
+  },
+  "loggingBehavior": "production"
 }
