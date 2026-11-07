@@ -11,7 +11,7 @@ import { brouterRoute, parseGpx, toGpx } from "./route";
 import { feasibleKm, headwind, smhiFireRisk, smhiForecast, windDirName, type WeatherHour } from "./weather";
 import { compareRegions, REGIONS, type Region } from "./regions";
 import { BLANK_STYLE, createMap, offlineStyle, ONLINE_STYLE, type MapView, type SatOptions } from "./map";
-import { compass, MEADOW, MEADOW_HINT, loadGrid, loadTestRegions, regionFor, scan, type ScanResult } from "./eignung";
+import { compass, MEADOW, MEADOW_HINT, RESERVE_HINT, loadGrid, loadTestRegions, regionFor, scan, type ScanResult } from "./eignung";
 import { deletePack, downloadPack, isOnline, listPacks, type TilePack } from "./offline";
 import {
   exportPlanFile, importPlanFile, loadChecks, loadCustomItems, loadPeople, loadPlan, saveChecks, saveCustomItems,
@@ -717,7 +717,7 @@ function showPoi(p: Poi) {
       <li>Weg/Zufahrt: ${esc(p.x.ac)} m</li>
       <li>${p.x.wa === "9999" ? "kein See/Fluss in der Nähe" : `Wasser: ${esc(p.x.wa)} m`}</li>
       ${wiese ? `<li>${esc(MEADOW_HINT)}</li>` : ""}
-      ${p.x.res ? `<li>⚠️ Liegt in einem Naturschutzgebiet: Zelt-Regeln vor Ort prüfen</li>` : ""}</ul>
+      ${p.x.res ? `<li><b>${esc(RESERVE_HINT)}</b></li>` : ""}</ul>
       <p class="muted">Berechnet aus offenen Daten (Marktäcke Naturvårdsverket, Höhenmodell FABDEM, OpenStreetMap). Steine, Wurzeln, Hanglage im Kleinen und Privatgrund sieht die Analyse nicht. Höchstens 1–2 Nächte, Abstand halten, nichts hinterlassen.</p>`;
   }
   const hint =
@@ -797,8 +797,9 @@ function setPickMode(on: boolean) {
 const eigColor = (sc: number): [string, string, string] =>
   sc >= 75 ? ["#2e7d32", "grün", "gut"] : sc >= 60 ? ["#f9a825", "gelb", "brauchbar"] : ["#ef6c00", "orange", "mäßig"];
 /** Wiesen höchstens gelb: nur bedingt geeignet. */
-const spotColor = (sp: { score: number; cell: { ground: number } }): [string, string, string] =>
-  sp.cell.ground === MEADOW ? ["#f9a825", "gelb", "Wiese – bedingt"] : eigColor(sp.score);
+const spotColor = (sp: { score: number; cell: { ground: number; reserve: boolean } }): [string, string, string] =>
+  sp.cell.reserve ? ["#f9a825", "gelb", "Schutzgebiet – Regeln prüfen"]
+    : sp.cell.ground === MEADOW ? ["#f9a825", "gelb", "Wiese – bedingt"] : eigColor(sp.score);
 const fmtM = (m: number) => (m >= 1000 ? `${(m / 1000).toLocaleString("de-DE", { maximumFractionDigits: 1 })} km` : `${Math.round(m / 10) * 10} m`);
 const RADII: [number, string][] = [[200, "200 m"], [500, "500 m"], [1000, "1 km"], [3000, "3 km"]];
 
@@ -842,11 +843,12 @@ async function checkPoint(center: LonLat) {
     center, radiusM: S.eigRadius,
     spots: spots.map((sp, i) => ({ lon: sp.lon, lat: sp.lat, label: String(i + 1), color: spotColor(sp)[0] })),
   });
-  const here = res.here.suitable && res.here.cell?.ground === MEADOW
+  const reserveHere = res.here.cell?.reserve ? `<p class="warn"><b>${esc(RESERVE_HINT)}</b></p>` : "";
+  const here = reserveHere + (res.here.suitable && res.here.cell?.ground === MEADOW
     ? `<p><b>🟡 bedingt geeignet</b> – Wiese. Alle anderen Regeln sind erfüllt.</p><p>${esc(MEADOW_HINT)}</p>`
     : res.here.suitable
     ? `<p><b>✅ geeignet</b> – dieser Punkt erfüllt alle Regeln.</p>`
-    : `<p><b>❌ nicht geeignet</b></p><ul>${res.here.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`;
+    : `<p><b>❌ nicht geeignet</b></p><ul>${res.here.reasons.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>`);
   const list = spots.length
     ? spots.map((sp, i) => {
         const [col, , txt] = spotColor(sp);

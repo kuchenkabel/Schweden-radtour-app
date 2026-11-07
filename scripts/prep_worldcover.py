@@ -85,7 +85,7 @@ def load_osm_layers(path, to3006, probes=()):
                 farmland.append(g)
             for lat, lon, pt in pts:
                 if g.geom_type in ("Polygon", "MultiPolygon") and g.distance(pt) <= 60:
-                    keep = {k: v for k, v in p.items() if k in ("landuse", "natural", "leisure", "landcover", "meadow", "crop", "name", "access", "@id", "building", "highway")}
+                    keep = {k: v for k, v in p.items() if k in ("landuse", "natural", "leisure", "landcover", "meadow", "crop", "name", "access", "@id", "building", "highway", "boundary", "protect_class", "protection_title")}
                     if keep and not keep.keys() <= {"@id", "name"}:
                         where = "enthält Punkt" if g.contains(pt) else f"{g.distance(pt):.0f} m"
                         print(f"  Prüfpunkt {lat},{lon}: {where}: {keep}", file=sys.stderr)

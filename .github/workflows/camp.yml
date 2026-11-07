@@ -13,10 +13,12 @@ on:
     branches: [main]
     paths:
       - scripts/build_camp.py
+      - scripts/fetch_protected.py
       - .github/workflows/camp.yml
   pull_request:
     paths:
       - scripts/build_camp.py
+      - scripts/fetch_protected.py
       - .github/workflows/camp.yml
 
 permissions:
@@ -90,6 +92,10 @@ jobs:
             -o filtered.osm.pbf
           rm sweden.osm.pbf
           ls -lh filtered.osm.pbf
+      - name: Amtliche Schutzgebiete (Naturvårdsverket) laden
+        run: |
+          python3 scripts/fetch_protected.py protected.geojsonseq
+          ls -lh protected.geojsonseq
       - name: Kandidaten je Region berechnen
         run: |
           mkdir -p out grids
@@ -99,6 +105,7 @@ jobs:
             ext=$(python3 -c "print(f'{$w-0.15},{$s-0.1},{$e+0.15},{$n+0.1}')")
             osmium extract -s smart -b "$ext" filtered.osm.pbf -o "r-$id.osm.pbf" --overwrite
             osmium export "r-$id.osm.pbf" -f geojsonseq -o "r-$id.geojsonseq" --overwrite
+            cat protected.geojsonseq >> "r-$id.geojsonseq"
             # FABDEM (Univ. Bristol, CC BY-NC-SA 4.0): ohne Bäume/Gebäude, sonst wirken Waldränder wie Hänge
             DEMF=dem.vrt
             if python3 -c "import fabdem; w,s,e,n=$ext; fabdem.download((w-0.05,s-0.05,e+0.05,n+0.05), output_path='dem-$id.tif', cache='fabdem-cache', show_progress=False)"; then
