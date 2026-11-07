@@ -40,13 +40,27 @@ VINDSKYDD_WORDS = ("vindskydd", "windskydd", "slogbod", "kåta")
 STF_MARKERS = ("stf", "svenska turistföreningen", "svenska turistforeningen")
 
 
+BASIC_CAMP_WORDS = ("tältplats", "taltplats", "lägerplats", "lagerplats", "rastplats", "naturcamping",
+                    "trekkingplatz", "biwak", "wildzelt")
+
+
+def is_basic_camp(t):
+    """Einfacher (oft kostenloser) Zeltplatz statt Campingplatz mit Rezeption."""
+    if t.get("camp_site") in ("basic", "backcountry") or t.get("backcountry") == "yes":
+        return True
+    if t.get("fee") == "no":
+        return True
+    name = (t.get("name") or "").lower()
+    return any(w in name for w in BASIC_CAMP_WORDS)
+
+
 def classify(t):
     a = t.get("amenity")
     if a == "shelter":
         return classify_shelter(t)
     tour = t.get("tourism")
     if tour == "camp_site":
-        return "camping"
+        return "lager" if is_basic_camp(t) else "camping"
     if tour in ("wilderness_hut", "alpine_hut"):
         return "huette"
     if tour == "hostel":

@@ -33,8 +33,8 @@ const S = {
   routePois: [] as RoutePoi[],
   stages: [] as Stage[],
   days: [] as DayPlan[],
-  visible: new Set<Cat>(["vindskydd", "camping", "stf", "badplats"]),
-  nextCats: new Set<Cat>(["badplats", "wasser", "supermarkt", "vindskydd", "camping"]),
+  visible: new Set<Cat>(["vindskydd", "lager", "camping", "stf", "badplats"]),
+  nextCats: new Set<Cat>(["badplats", "wasser", "supermarkt", "vindskydd", "lager", "camping"]),
   pos: null as LonLat | null,
   posAccuracy: 0,
   online: navigator.onLine,
@@ -547,7 +547,7 @@ function renderUnterwegs(): string {
       <button class="btn secondary" id="doneStage">${S.plan.done.includes(stage.day) ? "Erledigt ✓" : "Etappe erledigt"}</button></div></div>`;
   }
 
-  html += `<h2>Was kommt als Nächstes</h2>${catChips(S.nextCats, ["badplats", "spielplatz", "wasser", "wc", "supermarkt", "vindskydd", "zeltplatz", "camping", "stf", "radladen", "gas", "apotek", "bahnhof"], "next")}
+  html += `<h2>Was kommt als Nächstes</h2>${catChips(S.nextCats, ["badplats", "spielplatz", "wasser", "wc", "supermarkt", "vindskydd", "lager", "zeltplatz", "camping", "stf", "radladen", "gas", "apotek", "bahnhof"], "next")}
     <div class="card">${
       ahead
         .filter((r) => S.nextCats.has(r.poi.cat) && r.alongKm - along < 80 && r.offKm <= (MINOR.has(r.poi.cat) ? 1 : 3))
@@ -1118,7 +1118,7 @@ async function init() {
   S.eigRadius = await load("eignungRadius", 500);
   const wantSat = await load("sat", false);
   const vis = await load<Cat[] | null>("visibleCats", null);
-  if (vis) S.visible = new Set(vis);
+  if (vis) S.visible = new Set(vis.includes("camping") && !vis.includes("lager") ? [...vis, "lager"] : vis);
   const nc = await load<Cat[] | null>("nextCats", null);
   if (nc) S.nextCats = new Set(nc);
   const w = await load<any>("weather", null);

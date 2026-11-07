@@ -14,7 +14,8 @@ Regeln (Faustregeln zum Jedermannsrecht, bewusst vorsichtig):
   * Wiesen (OSM landuse=meadow) zählen bedingt: nur wenn gemäht und ungenutzt (App warnt)
   * Wald auf festem Boden oder offenes Grasland/Heide
   * Neigung höchstens 6 Grad (geglättet, Höhenmodell ist grob)
-  * Weg/Zufahrt 25 bis 300 m entfernt, mindestens 25 m von jedem Weg, 150 m von größeren Straßen
+  * Weg/Zufahrt höchstens 300 m entfernt, mindestens 10 m von Pfaden/Waldwegen, 25 m von Straßen,
+    150 m von größeren Straßen
   * in Naturschutzgebieten erlaubt, aber markiert (Vorschriften unterscheiden sich)
 Pro 1-km-Zelle wird höchstens der beste Punkt behalten.
 
@@ -72,7 +73,8 @@ WATER = [61, 62]
 # Regeln
 MIN_HOUSE = 200
 MAX_SLOPE = 6.0
-MIN_ACCESS, MAX_ACCESS = 25, 300
+MIN_ACCESS, MAX_ACCESS = 25, 300   # Straßen: mind. 25 m
+MIN_PATH = 10                       # Pfade/Waldwege: mind. 10 m (Trekkingplätze liegen direkt am Weg)
 MIN_MAJOR = 150
 MIN_WET = 30
 MIN_ARABLE = 30
@@ -80,6 +82,7 @@ MIN_WATER = 30
 MIN_SCORE = 55
 
 ACCESS_WAYS = {"track", "cycleway", "path", "bridleway", "footway", "unclassified"}
+PATH_WAYS = {"track", "cycleway", "path", "bridleway", "footway", "steps"}
 MAJOR_WAYS = {"motorway", "trunk", "primary", "secondary", "tertiary",
               "motorway_link", "trunk_link", "primary_link", "secondary_link", "tertiary_link"}
 EXCLUDE_LANDUSE = {"residential", "farmyard", "farmland", "orchard", "allotments", "cemetery",
@@ -96,7 +99,7 @@ def classify_osm(t):
     if hw:
         if hw in MAJOR_WAYS:
             out.append("major")
-        out.append("road")
+        out.append("path" if hw in PATH_WAYS else "road")
         if hw in ACCESS_WAYS and t.get("access") not in ("private", "no") and t.get("bicycle") != "no":
             out.append("access")
     if (t.get("landuse") in EXCLUDE_LANDUSE or t.get("leisure") in EXCLUDE_LEISURE
@@ -112,7 +115,7 @@ def classify_osm(t):
 
 def load_osm(path, bounds3006):
     to3006 = Transformer.from_crs("EPSG:4326", "EPSG:3006", always_xy=True)
-    groups = {k: [] for k in ("access", "road", "major", "exclude", "reserve", "meadow")}
+    groups = {k: [] for k in ("access", "road", "path", "major", "exclude", "reserve", "meadow")}
     clip = box(*bounds3006)
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -166,7 +169,7 @@ def bucket(v, edges):
     return np.digitize(v, edges).astype(np.uint16)
 
 
-def encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable, excl, res, d_major, cand, meadow):
+def encode_codes(nmd, d_house, slope, d_acc, d_road, d_path, d_water, d_wet, d_arable, excl, res, d_major, cand, meadow):
     # Untergrund (Version 2): 5 = Moor/Sumpf oder Acker, 6 = Wiese
     g = np.full(nmd.shape, 7, np.uint16)  # 7 = bebaut/Fels/Kahlschlag/sonstiges
     g[np.isin(nmd, WATER + [0])] = 0
@@ -179,7 +182,7 @@ def encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable, e
     g[meadow] = 6
     house = bucket(d_house, [50, 100, 150, 200, 300, 500, 1000])
     slp = bucket(slope, [3, 6, 10])
-    way = np.where(d_road < MIN_ACCESS, 0, np.where(d_acc <= 120, 1, np.where(d_acc <= MAX_ACCESS, 2, 3))).astype(np.uint16)
+    way = np.where((d_road < MIN_ACCESS) | (d_path < MIN_PATH), 0, np.where(d_acc <= 120, 1, np.where(d_acc <= MAX_ACCESS, 2, 3))).astype(np.uint16)
     wat = bucket(d_water, [MIN_WATER, 150, 400])
     near_bad = excl | (d_wet < MIN_WET) | (d_arable < MIN_ARABLE)
     return (g | house << 3 | slp << 6 | way << 8 | wat << 10 | res.astype(np.uint16) << 12
@@ -265,6 +268,7 @@ def process_tile(origin):
     trees = G["osm"]
     acc = raster_of(trees, "access", bounds, (H, W), tr)
     road = raster_of(trees, "road", bounds, (H, W), tr)
+    path = raster_of(trees, "path", bounds, (H, W), tr)
     major = raster_of(trees, "major", bounds, (H, W), tr)
     excl = raster_of(trees, "exclude", bounds, (H, W), tr)
     res = raster_of(trees, "reserve", bounds, (H, W), tr)
@@ -277,6 +281,7 @@ def process_tile(origin):
     d_arable = dist(np.isin(nmd, ARABLE) & ~meadow)
     d_acc = dist(acc)
     d_road = dist(road | np.isin(nmd, ROADLIKE))
+    d_path = dist(path)
     d_major = dist(major)
 
     ground_q = np.zeros(nmd.shape, np.float32)
@@ -287,7 +292,7 @@ def process_tile(origin):
 
     cand = ((ground_q > 0) & ~excl
             & (d_house >= MIN_HOUSE) & (slope <= MAX_SLOPE)
-            & (d_acc >= MIN_ACCESS) & (d_acc <= MAX_ACCESS) & (d_road >= MIN_ACCESS)
+            & (d_acc <= MAX_ACCESS) & (d_road >= MIN_ACCESS) & (d_path >= MIN_PATH)
             & (d_major >= MIN_MAJOR) & (d_wet >= MIN_WET) & (d_arable >= MIN_ARABLE)
             & (d_water >= MIN_WATER))
     # ebene, zusammenhängende Fläche von mind. 30 x 30 m
@@ -301,7 +306,7 @@ def process_tile(origin):
     score = np.where(cand, score, -1)
 
     if G.get("grid"):
-        code = encode_codes(nmd, d_house, slope, d_acc, d_road, d_water, d_wet, d_arable,
+        code = encode_codes(nmd, d_house, slope, d_acc, d_road, d_path, d_water, d_wet, d_arable,
                             excl, res, d_major, cand, meadow)
         samples = sample_grid(code, score, bx0, by1, x0, y0, b)
     else:
