@@ -16,7 +16,7 @@ import sys
 CATS = [
     "vindskydd", "huette", "camping", "stf", "hostel", "badplats", "spielplatz",
     "wasser", "wc", "supermarkt", "radladen", "gas", "apotek", "vard", "bahnhof",
-    "unterstand",
+    "unterstand", "lager",
 ]
 CAT_INDEX = {c: i for i, c in enumerate(CATS)}
 
