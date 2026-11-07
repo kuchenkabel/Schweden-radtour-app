@@ -117,6 +117,8 @@ def main(dst):
                     continue
                 p = ft.get("properties") or {}
                 title = first(p, "SKYDDSTYP", "skyddstyp", "SKYDDSTYP_TEXT") or ("Natura 2000" if want == "N2000" else "Schutzgebiet")
+                if "vattenskydd" in title.lower():  # Trinkwasserschutz, keine Naturschutz-Regeln fürs Zelten
+                    continue
                 props = {"boundary": "protected_area", "protection_title": title,
                          "name": first(p, "NAMN", "namn", "name", "OMRADESNAMN")[:80], "source": "Naturvårdsverket"}
                 f.write(json.dumps({"type": "Feature", "properties": props, "geometry": swap_if_needed(g)},
