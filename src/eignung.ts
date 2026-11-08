@@ -98,10 +98,9 @@ export function decodeCell(v: number): Cell {
 export function cellScore(c: Cell): number {
   const house = c.house === 4 ? 0.25 : c.house === 5 ? 0.6 : c.house >= 6 ? 1 : 0;
   const slope = c.slope === 0 ? 1 : c.slope === 1 ? 0.5 : 0;
-  const water = c.water === 1 ? 1 : c.water === 2 ? 0.5 : 0;
   const way = c.way === 1 ? 1 : c.way === 2 ? 0.6 : 0;
   const ground = c.ground === 1 ? 1 : c.ground === 2 ? 0.8 : c.ground === 3 ? 0.75 : c.ground === 4 ? 0.5 : c.ground === MEADOW ? 0.4 : 0;
-  return Math.round(35 * house + 20 * slope + 15 * water + 15 * way + 15 * ground - (c.reserve ? 10 : 0));
+  return Math.round(35 * house + 20 * slope + 15 * way + 15 * ground - (c.reserve ? 10 : 0));
 }
 
 export function failReasons(c: Cell): string[] {
@@ -113,10 +112,9 @@ export function failReasons(c: Cell): string[] {
   if (c.slope >= 2) r.push("Hang über 6°");
   if (c.way === 0) r.push("zu nah am Weg (Pfad < 10 m, Straße < 25 m)");
   if (c.way === 3) r.push("kein Weg innerhalb 300 m");
-  if (c.water === 0) r.push("zu nah am Ufer");
   if (c.bigRoad) r.push("große Straße < 150 m");
   if (c.excluded) r.push("Acker/Moor/Wohngebiet in < 30 m");
-  if (!c.suitable && r.length === 0) r.push("Freie Fläche zu klein: keine 30 × 30 m, die alle Abstände (Weg, Acker, Haus, Ufer) einhalten");
+  if (!c.suitable && r.length === 0) r.push("Freie Fläche zu klein: keine 30 × 30 m, die alle Abstände (Weg, Acker, Haus) einhalten");
   return r;
 }
 
