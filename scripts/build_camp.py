@@ -294,15 +294,14 @@ def process_tile(origin):
             & (d_house >= MIN_HOUSE) & (slope <= MAX_SLOPE)
             & (d_acc <= MAX_ACCESS) & (d_road >= MIN_ACCESS) & (d_path >= MIN_PATH)
             & (d_major >= MIN_MAJOR) & (d_wet >= MIN_WET) & (d_arable >= MIN_ARABLE)
-            & (d_water >= MIN_WATER))
+            )
     # ebene, zusammenhängende Fläche von mind. 30 x 30 m
     cand = ndimage.binary_erosion(cand, structure=np.ones((3, 3), bool))
 
     s_house = np.clip((d_house - MIN_HOUSE) / 400, 0, 1)
     s_slope = np.clip(1 - slope / MAX_SLOPE, 0, 1)
-    s_water = np.where(d_water <= 400, 1 - np.clip(d_water - 50, 0, None) / 350, 0)
     s_acc = np.where(d_acc <= 120, 1.0, 1 - 0.7 * (d_acc - 120) / (MAX_ACCESS - 120))
-    score = 35 * s_house + 20 * s_slope + 15 * s_water + 15 * s_acc + 15 * ground_q - 10 * res
+    score = 35 * s_house + 20 * s_slope + 15 * s_acc + 15 * ground_q - 10 * res
     score = np.where(cand, score, -1)
 
     if G.get("grid"):

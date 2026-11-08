@@ -61,7 +61,7 @@ describe("eignung", () => {
     expect(r.suitableCount).toBe(3);
     expect(r.landCount).toBeGreaterThan(r.suitableCount);
     expect(r.spots.length).toBe(2); // GOOD (einmal), OK; Nachbar verdrängt
-    expect(r.spots[0].score).toBe(100);
+    expect(r.spots[0].score).toBe(85);
     expect(r.spots[1].score).toBe(Math.round(35 * 0.6 + 20 * 0.5 + 15 * 0.5 + 15 * 0.6 + 15 * 0.75));
     expect(r.spots[0].distM).toBeGreaterThan(200);
     expect(r.spots[0].reasons.join(" ")).toContain("Kiefernwald");
