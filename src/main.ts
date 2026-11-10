@@ -1032,7 +1032,9 @@ function bindNotfall() {
 // ---------- Mehr ----------
 function renderMehr(): string {
   const packFor = (r: Region) => S.packs.find((p) => p.region === r.id);
-  return `<h2>Offline-Karten</h2>
+  const native = Capacitor.isNativePlatform();
+  const nurApp = `<div class="card muted">Gibt es nur in der Android-App. Im Browser wird immer die Online-Karte genutzt.</div>`;
+  return `<h2>Offline-Karten</h2>${native ? `
     <p class="muted">Vor der Abfahrt im WLAN laden. Ein Paket pro Region, je etwa 30–150 MB. Orte, Etappen und Listen funktionieren auch ohne Kartenpaket offline.</p>
     <div class="card">${REGIONS.map((r) => {
       const p = packFor(r);
@@ -1040,12 +1042,12 @@ function renderMehr(): string {
         ${p ? `<button class="btn small danger" data-delpack="${r.id}">Löschen</button>` : `<button class="btn small" data-getpack="${r.id}">Laden</button>`}</div>`;
     }).join("")}</div>
     <div class="card"><label>Kartenquelle <select id="mapSource"><option value="auto">Automatisch (online, sonst Paket)</option>
-      ${S.packs.map((p) => `<option value="${p.region}" ${S.mapSource === p.region ? "selected" : ""}>Offline: ${esc(REGIONS.find((r) => r.id === p.region)?.name ?? p.region)}</option>`).join("")}</select></label></div>
+      ${S.packs.map((p) => `<option value="${p.region}" ${S.mapSource === p.region ? "selected" : ""}>Offline: ${esc(REGIONS.find((r) => r.id === p.region)?.name ?? p.region)}</option>`).join("")}</select></label></div>` : nurApp}
     <h2>Luftbild (Esri)</h2><div class="card"><p class="muted">Kostenloses Konto auf location.arcgis.com anlegen, unter Developer credentials einen API-Schlüssel mit dem Recht 'Basemaps' erstellen und hier einfügen. Der Schlüssel bleibt nur auf diesem Handy.</p>
       <input type="password" id="esriKey" placeholder="API-Schlüssel" value="${esc(S.esriKey)}" autocomplete="off" style="width:100%">
       <div class="row" style="margin-top:8px"><button class="btn small" id="esriSave">Speichern</button><button class="btn small danger" id="esriDel">Löschen</button></div></div>
     <h2>Erinnerungen</h2><div class="card"><p>Während der Tour täglich um 8:30 „Wind und Etappe checken“ und um 15:30 „Camp aufbauen, Wasser auffüllen, Zeckencheck“.</p>
-      <button class="btn" id="notify">Erinnerungen einplanen</button></div>
+      ${native ? `<button class="btn" id="notify">Erinnerungen einplanen</button>` : `<p class="muted">Erinnerungen kann nur die Android-App einplanen.</p>`}</div>
     <h2>Xiaomi-Handys einrichten</h2><div class="card content">${XIAOMI_HILFE}</div>
     <h2>Allemansrätten</h2><div class="card content">${ALLEMANSRAETT}</div>
     <h2>Fähren nach Schweden</h2><div class="card">${(transportRules as Rule[]).filter((r) => r.type === "ferry").map((r) => `<details><summary><b>${esc(r.name)}</b></summary><p>🚲 ${esc(r.bikesNote)}</p><p>🛺 ${esc(r.trailerNote)}</p>${r.cost ? `<p>💶 ${esc(r.cost)}</p>` : ""}<p class="muted"><a href="${esc(r.sourceUrl)}" target="_blank">Quelle</a>, Stand ${esc(r.checkedDate)}</p></details>`).join("")}</div>

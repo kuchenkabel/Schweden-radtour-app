@@ -1,0 +1,66 @@
+name: WebApp (GitHub Pages)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**.md", "android/**", ".github/workflows/apk.yml", ".github/workflows/smoketest.yml"]
+  pull_request:
+    paths: ["src/**", "index.html", "public/**", "scripts/web_smoketest.mjs", ".github/workflows/web.yml", "package*.json"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Abhängigkeiten
+        run: npm ci
+      - name: Tests
+        run: npm test
+      - name: Daten und Schriften laden
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm run fetch-data
+      - name: Web-App bauen
+        run: npm run build
+      - name: Eignungskarten dazulegen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist/data/eignung
+          gh release download data-latest -p 'eignung-*.bin' -D dist/data/eignung
+          # Testflächen aus dem Blindtest brauchen wir in der WebApp nicht
+          rm -f dist/data/eignung/eignung-blind*.bin dist/data/eignung/eignung-testwiese.bin
+          du -sh dist dist/data/eignung
+      - name: Browser-Test
+        run: |
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          node scripts/web_smoketest.mjs
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
