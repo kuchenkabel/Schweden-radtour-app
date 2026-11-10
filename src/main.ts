@@ -1,5 +1,5 @@
 import "./style.css";
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Geolocation } from "@capacitor/geolocation";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -112,6 +112,59 @@ function pickFile(accept: string): Promise<string | null> {
     inp.onchange = async () => resolve(inp.files?.[0] ? await inp.files[0].text() : null);
     inp.click();
   });
+}
+
+async function importGpxText(text: string) {
+  try {
+    const { name, line } = parseGpx(text);
+    S.plan = { ...S.plan, name, line, waypoints: [line[0], line[line.length - 1]], pinned: [], done: [] };
+    await savePlan(S.plan);
+    recompute();
+    mv.fit(bboxOf(line));
+    render();
+    toast(`Route „${name}“ importiert`);
+  } catch (e) {
+    toast(String((e as Error).message));
+  }
+}
+
+async function importPlanText(text: string) {
+  try {
+    const { plan, checks } = importPlanFile(text);
+    S.plan = plan;
+    if (checks) { S.checks = { ...S.checks, ...checks }; await saveChecks(S.checks); }
+    await savePlan(S.plan);
+    recompute();
+    if (plan.line.length > 1) mv.fit(bboxOf(plan.line));
+    render();
+    toast("Plan importiert");
+  } catch (e) {
+    toast(String((e as Error).message));
+  }
+}
+
+// ---------- Dateien von außen ("Öffnen mit …" / "Teilen") ----------
+interface IncomingFile { name?: string; text?: string; error?: string }
+const IncomingFilePlugin = registerPlugin<{
+  take(): Promise<IncomingFile>;
+  addListener(ev: "fileOpened", cb: (f: IncomingFile) => void): Promise<unknown>;
+}>("IncomingFile");
+
+async function handleIncoming(f: IncomingFile) {
+  if (f.error) return toast(f.error, 4000);
+  const text = f.text?.trim();
+  if (!text) return;
+  const isPlan = text.startsWith("{");
+  if (!isPlan && !/<gpx[\s>]/i.test(text)) return toast("Das ist keine GPX-Datei", 4000);
+  if (S.plan.line.length > 1 && !confirm(`Die aktuelle Route „${S.plan.name}“ ersetzen?`)) return;
+  setTab("planen");
+  await (isPlan ? importPlanText(text) : importGpxText(text));
+}
+
+async function initIncoming() {
+  if (!Capacitor.isNativePlatform()) return;
+  await IncomingFilePlugin.addListener("fileOpened", (f) => { handleIncoming(f); });
+  await handleIncoming(await IncomingFilePlugin.take());
 }
 
 // ---------- Berechnung ----------
@@ -379,18 +432,7 @@ function bindPlanen() {
   $("#calcRoute")?.addEventListener("click", calcRoute);
   $("#importGpx")?.addEventListener("click", async () => {
     const text = await pickFile(".gpx,application/gpx+xml,application/xml,text/xml,*/*");
-    if (!text) return;
-    try {
-      const { name, line } = parseGpx(text);
-      S.plan = { ...S.plan, name, line, waypoints: [line[0], line[line.length - 1]], pinned: [], done: [] };
-      await savePlan(S.plan);
-      recompute();
-      mv.fit(bboxOf(line));
-      render();
-      toast(`Route „${name}“ importiert`);
-    } catch (e) {
-      toast(String((e as Error).message));
-    }
+    if (text) await importGpxText(text);
   });
   $("#toggleAll")?.addEventListener("click", () => { S.showAllPois = !S.showAllPois; updateMap(); render(); });
   $("#resetRoute")?.addEventListener("click", async () => {
@@ -424,19 +466,7 @@ function bindPlanen() {
   );
   $("#importPlan")?.addEventListener("click", async () => {
     const text = await pickFile(".json,application/json,*/*");
-    if (!text) return;
-    try {
-      const { plan, checks } = importPlanFile(text);
-      S.plan = plan;
-      if (checks) { S.checks = { ...S.checks, ...checks }; await saveChecks(S.checks); }
-      await savePlan(S.plan);
-      recompute();
-      if (plan.line.length > 1) mv.fit(bboxOf(plan.line));
-      render();
-      toast("Plan importiert");
-    } catch (e) {
-      toast(String((e as Error).message));
-    }
+    if (text) await importPlanText(text);
   });
   panel().querySelectorAll<HTMLElement>("[data-zoom]").forEach((b) =>
     b.addEventListener("click", () => {
@@ -1167,6 +1197,7 @@ async function init() {
   startGps();
   refreshWeather();
   setInterval(refreshWeather, 30 * 60 * 1000);
+  initIncoming();
   selftest();
 }
 
