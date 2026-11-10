@@ -8,6 +8,8 @@ import { load, save } from "./store";
 /** Eignungskarten (Wildcamping) pro Region, GitHub-Release data-latest. */
 export const EIGNUNG_BASE = "https://github.com/kuchenkabel/schweden-radtour-app/releases/download/data-latest";
 export const eignungUrl = (id: string) => `${EIGNUNG_BASE}/eignung-${id}.bin`;
+/** Im Browser (WebApp auf GitHub Pages) liegen die Karten neben der App, weil GitHub-Releases kein CORS erlauben. */
+export const eignungWebUrl = (id: string) => `data/eignung/eignung-${id}.bin`;
 export const eignungPath = (id: string) => `eignung/${id}.bin`;
 
 export interface GridHeader {
@@ -258,7 +260,7 @@ export async function loadGrid(regionId: string): Promise<Grid> {
         buf = await readLocal(regionId);
       }
     } else {
-      const res = await fetch(eignungUrl(regionId));
+      const res = await fetch(eignungWebUrl(regionId));
       if (!res.ok) throw new Error(String(res.status));
       buf = await res.arrayBuffer();
     }

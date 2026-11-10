@@ -1,0 +1,11 @@
+{
+  "name": "Schweden-Radtour",
+  "short_name": "Radtour",
+  "lang": "de",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#005b99",
+  "icons": [{ "src": "icon-192.png", "sizes": "192x192", "type": "image/png" }]
+}
