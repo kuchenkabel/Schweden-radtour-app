@@ -18,6 +18,7 @@ import {
   savePeople, savePlan, type Person, type TourPlan,
 } from "./plan";
 import { load, save } from "./store";
+import { connect, disconnect, getState, initSync, loadConfig, makeSyncCode, normalizeRepo, parseSyncCode, syncNow, type Conflict, type SyncConfig } from "./sync";
 import { PACKLISTE, VOR_DER_TOUR, type CheckGroup } from "./content/checklists";
 import { ALLEMANSRAETT, NOTFALL_INFO, SCHWEDISCH_SAETZE, XIAOMI_HILFE } from "./content/texts";
 import transportRules from "../data/transport-rules.json";
@@ -52,6 +53,7 @@ const S = {
   pickMode: false,
   eigRadius: 500,
   check: null as null | { center: LonLat; token: number },
+  sync: { cfg: null as SyncConfig | null, last: "", error: "", dirty: false, busy: false },
 };
 
 let mv: MapView;
@@ -1034,7 +1036,7 @@ function renderMehr(): string {
   const packFor = (r: Region) => S.packs.find((p) => p.region === r.id);
   const native = Capacitor.isNativePlatform();
   const nurApp = `<div class="card muted">Gibt es nur in der Android-App. Im Browser wird immer die Online-Karte genutzt.</div>`;
-  return `<h2>Offline-Karten</h2>${native ? `
+  return `${renderSync()}<h2>Offline-Karten</h2>${native ? `
     <p class="muted">Vor der Abfahrt im WLAN laden. Ein Paket pro Region, je etwa 30–150 MB. Orte, Etappen und Listen funktionieren auch ohne Kartenpaket offline.</p>
     <div class="card">${REGIONS.map((r) => {
       const p = packFor(r);
@@ -1055,6 +1057,7 @@ function renderMehr(): string {
 }
 
 function bindMehr() {
+  bindSync();
   panel().querySelectorAll<HTMLElement>("[data-getpack]").forEach((b) =>
     b.addEventListener("click", async () => {
       const id = b.dataset.getpack!;
@@ -1141,6 +1144,119 @@ async function startGps() {
   }
 }
 
+// ---------- Sync Laptop <-> Handy ----------
+async function refreshSyncStatus() {
+  S.sync.cfg = await loadConfig();
+  const st = await getState();
+  S.sync.last = st.lastSync ?? "";
+  S.sync.error = st.lastError ?? "";
+  S.sync.dirty = st.dirty;
+  if (S.tab === "mehr") render();
+}
+
+async function applySynced() {
+  S.plan = await loadPlan();
+  S.checks = await loadChecks();
+  S.custom = await loadCustomItems();
+  S.people = await loadPeople();
+  recompute();
+  if (S.plan.line.length > 1) mv.fit(bboxOf(S.plan.line));
+  render();
+  toast("Neuer Stand vom anderen Gerät übernommen");
+}
+
+function resolveConflict(c: Conflict): Promise<boolean> {
+  const when = (iso?: string) => (iso ? new Date(iso).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "?");
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: boolean) => { if (!done) { done = true; closeSheet(); resolve(v); } };
+    openSheet(
+      `<h2>Zwei verschiedene Stände</h2>
+      <p>Der Plan wurde auf diesem Gerät <b>und</b> auf einem anderen Gerät geändert. Welcher Stand soll gelten?</p>
+      <div class="card"><b>Anderes Gerät</b> (${esc(c.remote.device)}): gespeichert ${esc(when(c.remote.updated))}</div>
+      <div class="card"><b>Dieses Gerät</b>: zuletzt geändert ${esc(when(c.localUpdated))}</div>
+      <div class="row"><button class="btn" id="takeRemote">Anderes Gerät übernehmen</button><button class="btn secondary" id="keepLocal">Diesen Stand behalten</button></div>
+      <p class="muted">Der andere Stand bleibt in der Versionsgeschichte des GitHub-Repos erhalten.</p>`,
+      (el) => {
+        el.querySelector("#takeRemote")!.addEventListener("click", () => finish(true));
+        el.querySelector("#keepLocal")!.addEventListener("click", () => finish(false));
+        // Schließen ohne Wahl: eigenen Stand behalten
+        el.querySelector(".close")!.addEventListener("click", () => finish(false));
+      },
+    );
+  });
+}
+
+function renderSync(): string {
+  const y = S.sync;
+  if (!y.cfg) {
+    return `<h2>Sync Laptop ↔ Handy</h2><div class="card">
+      <p class="muted">Plan, Packliste und Personen über ein <b>privates</b> GitHub-Repo zwischen Geräten abgleichen. <a href="https://github.com/kuchenkabel/schweden-radtour-app/blob/main/docs/SYNC.md" target="_blank">Anleitung</a></p>
+      <label>Sync-Code vom anderen Gerät <input type="text" id="syncCode" placeholder="RT1-…" autocomplete="off" style="width:100%"></label>
+      <div class="row" style="margin-top:6px"><button class="btn small" id="syncUseCode">Mit Sync-Code verbinden</button></div>
+      <details style="margin-top:10px"><summary>Erstes Gerät: Repo und Token eingeben</summary>
+        <label>Repo <input type="text" id="syncRepo" placeholder="besitzer/radtour-daten" autocomplete="off" style="width:100%"></label>
+        <label>Token <input type="password" id="syncToken" placeholder="github_pat_…" autocomplete="off" style="width:100%"></label>
+        <div class="row" style="margin-top:6px"><button class="btn small" id="syncConnect">Verbinden</button></div>
+      </details></div>`;
+  }
+  const last = y.last ? new Date(y.last).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "noch nie";
+  const status = y.busy ? "Gleiche ab …" : y.error ? `⚠️ ${esc(y.error)}` : y.dirty ? "Änderungen warten auf Upload" : "✓ Aktuell";
+  return `<h2>Sync Laptop ↔ Handy</h2><div class="card">
+    <div>Verbunden mit <b>${esc(y.cfg.repo)}</b></div>
+    <div class="muted">${status} · zuletzt abgeglichen ${esc(last)}</div>
+    <div class="row" style="margin-top:8px"><button class="btn small" id="syncNow">Jetzt abgleichen</button><button class="btn small secondary" id="syncCopy">Sync-Code fürs andere Gerät</button><button class="btn small danger" id="syncOff">Trennen</button></div>
+    <p class="muted">Der Sync-Code enthält den Zugangsschlüssel. Nur an eigene Geräte schicken.</p></div>`;
+}
+
+async function doConnect(cfg: SyncConfig) {
+  S.sync.busy = true;
+  render();
+  try {
+    const { warning } = await connect(cfg);
+    toast(warning ?? "Sync verbunden", warning ? 6000 : 2600);
+  } catch (e) {
+    toast(`Verbinden fehlgeschlagen: ${(e as Error).message}`, 5000);
+  }
+  S.sync.busy = false;
+  await refreshSyncStatus();
+  render();
+}
+
+function bindSync() {
+  $("#syncUseCode")?.addEventListener("click", () => {
+    try { doConnect(parseSyncCode($<HTMLInputElement>("#syncCode").value)); } catch (e) { toast((e as Error).message, 4000); }
+  });
+  $("#syncConnect")?.addEventListener("click", () => {
+    try {
+      const token = $<HTMLInputElement>("#syncToken").value.trim();
+      if (!token) return toast("Bitte Token eingeben");
+      doConnect({ repo: normalizeRepo($<HTMLInputElement>("#syncRepo").value), token, path: "radtour-sync.json" });
+    } catch (e) { toast((e as Error).message, 4000); }
+  });
+  $("#syncNow")?.addEventListener("click", async () => {
+    S.sync.busy = true; render();
+    await syncNow();
+    S.sync.busy = false;
+    await refreshSyncStatus();
+    toast(S.sync.error ? `Sync: ${S.sync.error}` : "Abgeglichen");
+  });
+  $("#syncCopy")?.addEventListener("click", async () => {
+    const code = makeSyncCode(S.sync.cfg!);
+    try {
+      await navigator.clipboard.writeText(code);
+      toast("Sync-Code kopiert – z. B. per Messenger an dich selbst schicken");
+    } catch {
+      openSheet(`<h2>Sync-Code</h2><p>Diesen Code im anderen Gerät unter Mehr → Sync einfügen:</p><textarea readonly style="width:100%;height:120px">${esc(code)}</textarea>`);
+    }
+  });
+  $("#syncOff")?.addEventListener("click", async () => {
+    await disconnect();
+    await refreshSyncStatus();
+    toast("Sync getrennt (Daten auf diesem Gerät bleiben)");
+  });
+}
+
 // ---------- Start ----------
 async function init() {
   S.plan = await loadPlan();
@@ -1200,6 +1316,8 @@ async function init() {
   refreshWeather();
   setInterval(refreshWeather, 30 * 60 * 1000);
   initIncoming();
+  initSync({ apply: applySynced, resolve: resolveConflict, status: refreshSyncStatus });
+  refreshSyncStatus();
   selftest();
 }
 
