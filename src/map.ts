@@ -136,7 +136,7 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
       id: "pois", type: "circle", source: "pois",
       paint: {
         "circle-color": ["get", "color"],
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 2.5, 12, 6, 15, 8],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3.5, 12, 7, 15, 9],
         "circle-stroke-color": "#fff",
         "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], 6, 0.5, 12, 1.5],
       },
@@ -221,9 +221,9 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     }
     (map.getSource("route") as GeoJSONSource).setData(fc(routeFeatures));
     (map.getSource("stage-ends") as GeoJSONSource).setData(
-      fc(state.stages.map((s) => ({
+      fc(state.stages.map((s, i) => ({
         type: "Feature",
-        properties: { label: String(s.day) },
+        properties: { label: String(s.day), i },
         geometry: { type: "Point", coordinates: s.end ? [s.end.lon, s.end.lat] : endOf(s) },
       }))),
     );
@@ -258,10 +258,29 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
   map.on("style.load", ensureLayers);
   map.on("error", (e: any) => console.log(`[map] Fehler: ${e?.error?.message ?? e}`));
   map.on("idle", () => console.log(`[map] bereit, Zoom ${map.getZoom().toFixed(1)}`));
-  map.on("click", "pois", (e: any) => {
-    const id = e.features?.[0]?.properties?.id;
-    const p = id !== undefined ? poiById.get(Number(id)) : undefined;
-    if (p && poiCb && !pickMode) poiCb(p);
+  // Punkte sind auf dem Handy klein: Tipps im Umkreis von TAP_PX Pixeln zählen,
+  // der nächstgelegene Punkt gewinnt. Tagesnummern (Etappenenden) haben Vorrang
+  // und öffnen den Schlafplatz der Etappe.
+  const TAP_PX = 18;
+  const nearestAt = (x: number, y: number, layer: string) => {
+    if (!map.getLayer(layer)) return null;
+    let best: any = null, bestD = Infinity;
+    for (const f of map.queryRenderedFeatures([[x - TAP_PX, y - TAP_PX], [x + TAP_PX, y + TAP_PX]], { layers: [layer] })) {
+      const pt = map.project((f.geometry as any).coordinates as [number, number]);
+      const d = (pt.x - x) ** 2 + (pt.y - y) ** 2;
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    return best;
+  };
+  map.on("click", (e: any) => {
+    if (!poiCb || pickMode) return;
+    const { x, y } = e.point;
+    const st = nearestAt(x, y, "stage-ends");
+    const end = st ? state.stages[Number(st.properties?.i)]?.end : null;
+    if (end) { poiCb(end); return; }
+    const f = nearestAt(x, y, "pois");
+    const p = f ? poiById.get(Number(f.properties?.id)) : undefined;
+    if (p) poiCb(p);
   });
   const pick = (e: any) => { pickCb?.([e.lngLat.lng, e.lngLat.lat]); };
   map.on("click", (e: any) => {
