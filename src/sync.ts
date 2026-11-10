@@ -118,26 +118,36 @@ async function ghError(res: Response): Promise<Error> {
   return new Error(`GitHub ${res.status}${msg ? `: ${msg}` : ""}`);
 }
 
+async function readJson(res: Response): Promise<any> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Unerwartete Antwort von GitHub (${res.status}${text ? "" : ", leer"})`);
+  }
+}
+
 const filePath = (cfg: SyncConfig) => `/repos/${cfg.repo}/contents/${cfg.path.split("/").map(encodeURIComponent).join("/")}`;
 
 /** Prüft Repo und Token. Wirft bei Problemen, liefert eine Warnung bei öffentlichem Repo. */
 export async function checkAccess(cfg: SyncConfig): Promise<{ warning?: string }> {
   const res = await gh(cfg, `/repos/${cfg.repo}`);
   if (!res.ok) throw await ghError(res);
-  const repo = await res.json();
+  const repo = await readJson(res);
   if (repo.permissions && repo.permissions.push === false) throw new Error("Token darf in dieses Repo nicht schreiben (Contents: Read and write nötig)");
-  // Schreibrecht prüfen, ohne etwas zu ändern: PUT mit absichtlich falscher sha.
-  // Token ohne Schreibrecht → 403, sonst Konflikt (409/422) und nichts passiert.
+  // Schreibrecht prüfen, ohne etwas zu ändern: PUT mit absichtlich ungültigem Inhalt.
+  // Token ohne Schreibrecht → 403, sonst lehnt GitHub den Inhalt ab (422) und nichts passiert.
   const probe = await gh(cfg, filePath(cfg), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: "Schreibtest", content: "", sha: "0000000000000000000000000000000000000000" }),
+    body: JSON.stringify({ message: "Schreibtest", content: "%%% kein base64 %%%" }),
   });
   if (probe.status === 401 || probe.status === 403) throw new Error(NO_WRITE);
   return repo.private ? {} : { warning: "Achtung: Das Repo ist öffentlich! Plan und Notfalldaten wären für alle sichtbar." };
 }
 
-export async function fetchRemote(cfg: SyncConfig): Promise<{ sha: string; doc: SyncDoc } | null> {
+/** doc ist null, wenn die Datei leer oder kaputt ist (wird dann beim nächsten Hochladen überschrieben). */
+export async function fetchRemote(cfg: SyncConfig): Promise<{ sha: string; doc: SyncDoc | null } | null> {
   const res = await gh(cfg, filePath(cfg));
   if (res.status === 404) {
     // Datei fehlt noch, oder Repo/Token falsch: Repo prüfen, damit wir nicht ins Leere schreiben
@@ -146,7 +156,7 @@ export async function fetchRemote(cfg: SyncConfig): Promise<{ sha: string; doc: 
     return null;
   }
   if (!res.ok) throw await ghError(res);
-  const meta = await res.json();
+  const meta = await readJson(res);
   let text: string;
   if (meta.content && meta.encoding === "base64") {
     text = base64ToUtf8(meta.content);
@@ -156,8 +166,9 @@ export async function fetchRemote(cfg: SyncConfig): Promise<{ sha: string; doc: 
     if (!raw.ok) throw await ghError(raw);
     text = await raw.text();
   }
-  const doc = JSON.parse(text) as SyncDoc;
-  if (doc.kind !== "schweden-radtour-sync") throw new Error(`${cfg.path} ist keine Sync-Datei dieser App`);
+  let doc: SyncDoc | null = null;
+  try { doc = JSON.parse(text) as SyncDoc; } catch { /* leer oder kaputt */ }
+  if (doc && doc.kind !== "schweden-radtour-sync") throw new Error(`${cfg.path} im Repo ist keine Sync-Datei dieser App`);
   return { sha: meta.sha, doc };
 }
 
@@ -168,7 +179,9 @@ export async function pushRemote(cfg: SyncConfig, doc: SyncDoc, sha?: string): P
   if (res.status === 409 || res.status === 422) return null;
   if (res.status === 403) throw new Error(NO_WRITE);
   if (!res.ok) throw await ghError(res);
-  return (await res.json()).content.sha;
+  const j = await res.json().catch(() => null);
+  if (!j?.content?.sha) throw new Error(`GitHub hat beim Hochladen unerwartet geantwortet (${res.status})`);
+  return j.content.sha;
 }
 
 // ---------- Ablauf ----------
@@ -200,20 +213,20 @@ async function runOnce(): Promise<void> {
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
       const remote = await fetchRemote(cfg);
-      const remoteChanged = !!remote && remote.sha !== st.sha;
-      if (remote && remoteChanged) {
+      const remoteChanged = !!remote?.doc && remote.sha !== st.sha;
+      if (remote?.doc && remoteChanged) {
         let takeRemote = !st.dirty;
         if (st.dirty) {
           const local = (await load<any>("plan", null))?.updated as string | undefined;
-          takeRemote = await (hooks?.resolve({ remote: remote.doc, localUpdated: local }) ?? Promise.resolve(false));
+          takeRemote = await (hooks?.resolve({ remote: remote.doc!, localUpdated: local }) ?? Promise.resolve(false));
         }
         if (takeRemote) {
-          await applyRemote(remote.doc);
+          await applyRemote(remote.doc!);
           Object.assign(st, { sha: remote.sha, dirty: false });
           break;
         }
       }
-      if (!st.dirty && remote) { st.sha = remote.sha; break; }
+      if (!st.dirty && remote?.doc) { st.sha = remote.sha; break; }
       const doc: SyncDoc = { kind: "schweden-radtour-sync", version: 1, updated: new Date().toISOString(), device: deviceName(), data: await localData() };
       const sha = await pushRemote(cfg, doc, remote?.sha);
       if (sha) { Object.assign(st, { sha, dirty: false }); break; }
@@ -222,7 +235,7 @@ async function runOnce(): Promise<void> {
     st.lastSync = new Date().toISOString();
     st.lastError = undefined;
   } catch (e) {
-    st.lastError = navigator.onLine ? (e as Error).message : "Offline – wird nachgeholt";
+    st.lastError = navigator.onLine !== false ? (e as Error).message : "Offline – wird nachgeholt";
     console.log(`[sync] ${st.lastError}`);
   }
   if (changedDuringRun) st.dirty = true;

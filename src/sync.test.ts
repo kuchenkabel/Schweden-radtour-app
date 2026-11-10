@@ -24,9 +24,12 @@ function fakeGitHub() {
     const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
     if (url.endsWith("/repos/fam/radtour-daten")) return json(200, { private: true, permissions: { push: true } });
     if (!url.includes("/contents/radtour-sync.json")) return json(404, { message: "Not Found" });
+    const accept = (init.headers as Record<string, string> | undefined)?.Accept ?? "";
+    if ((!init.method || init.method === "GET") && file && accept.includes("raw")) return new Response(sync.base64ToUtf8(file.content), { status: 200 });
     if (!init.method || init.method === "GET") return file ? json(200, { sha: file.sha, encoding: "base64", content: file.content }) : json(404, { message: "Not Found" });
     if (readOnly) return json(403, { message: "Resource not accessible by personal access token" });
     const body = JSON.parse(init.body as string);
+    if (!/^[A-Za-z0-9+/=]*$/.test(body.content)) return json(422, { message: "content is not valid Base64" });
     if ((file?.sha ?? undefined) !== body.sha) return json(409, { message: "sha mismatch" });
     file = { sha: `s${++shaN}`, content: body.content };
     return json(200, { content: { sha: file.sha } });
@@ -135,5 +138,19 @@ describe("Sync-Ablauf", () => {
     readOnly = true;
     await expect(sync.connect(cfg)).rejects.toThrow(/Read and write/);
     expect(await sync.loadConfig()).toBeNull();
+  });
+
+  it("Leere Sync-Datei im Repo wird überschrieben statt Absturz", async () => {
+    file = { sha: "leer", content: "" };
+    current = "laptop";
+    devices.laptop.set("plan", JSON.stringify(plan("A")));
+    await sync.connect(cfg);
+    expect(remoteDoc().data.plan.name).toBe("A");
+  });
+
+  it("Schreibtest beim Verbinden legt keine Datei an", async () => {
+    current = "laptop";
+    await sync.connect(cfg);
+    expect(file === null || remoteDoc().kind === "schweden-radtour-sync").toBe(true);
   });
 });
