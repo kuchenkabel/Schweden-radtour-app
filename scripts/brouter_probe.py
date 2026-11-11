@@ -10,10 +10,8 @@ TESTS = {
 }
 VARIANTS = {
   "trekking": None,
-  "f_route010_up80": {"UPHILLCOST": "80", "UPHILLCUTOFF": "3", "OFFROUTE": "0.10"},
-  "f_route015_up80": {"UPHILLCOST": "80", "UPHILLCUTOFF": "3", "OFFROUTE": "0.15"},
-  "f_route010_up200": {"UPHILLCOST": "200", "UPHILLCUTOFF": "3", "OFFROUTE": "0.10"},
-  "f_route005_up200_c2": {"UPHILLCOST": "200", "UPHILLCUTOFF": "2", "OFFROUTE": "0.05"},
+  "familie": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05"},
+  "familie-flach": {"UPHILLCOST": "250", "UPHILLCUTOFF": "2", "OFFROUTE": "0.05"},
 }
 TEMPLATE = pathlib.Path("src/brouter/familie.brf").read_text()
 PROFILE_IDS = {}
@@ -60,7 +58,7 @@ for name, (a, b) in TESTS.items():
       out["routes"][f"{name}/{v}"] = {"km": int(p["track-length"]) / 1000, "ascend": int(p["filtered ascend"]), "cost": int(p["cost"]), "profile": prof, "maxgrade200m": grade_stats(f["geometry"]["coordinates"])}
     except Exception as e:
       out["routes"][f"{name}/{v}"] = {"error": str(e)[:300]}
-    time.sleep(1)
+    time.sleep(4)
 
 # CORS für GET mit Profilparametern
 try:

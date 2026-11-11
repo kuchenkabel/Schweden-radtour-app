@@ -1,4 +1,5 @@
 import type { LonLat } from "./geo";
+import type { RouteProfile } from "./route";
 import { DEFAULT_SETTINGS, type StageSettings } from "./stages";
 import { load, save } from "./store";
 
@@ -17,6 +18,12 @@ export interface TourPlan {
   startDate?: string;
   waypoints: LonLat[];
   line: LonLat[];
+  /** Index jedes Wegpunkts in `line` (Abschnittsgrenzen) */
+  cuts?: number[];
+  /** Je Abschnitt: fest (z.B. aus GPX) statt neu berechenbar */
+  legFixed?: boolean[];
+  /** Routing-Profil */
+  profile?: RouteProfile;
   settings: StageSettings;
   pinned: number[];
   /** Erledigte Etappen (Tag-Nr.) */
@@ -49,6 +56,9 @@ export function normalizePlan(p: Partial<TourPlan> | null | undefined): TourPlan
     version: 1,
     waypoints: arr(p.waypoints, []),
     line: arr(p.line, []),
+    cuts: Array.isArray(p.cuts) ? p.cuts : undefined,
+    legFixed: Array.isArray(p.legFixed) ? p.legFixed : undefined,
+    profile: p.profile === "trekking" || p.profile === "familie-flach" ? p.profile : "familie",
     pinned: arr(p.pinned, []),
     done: arr(p.done, []),
     settings: { ...DEFAULT_SETTINGS, ...(p.settings && typeof p.settings === "object" ? p.settings : {}) },

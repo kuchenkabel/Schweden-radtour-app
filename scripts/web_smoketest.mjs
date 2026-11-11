@@ -36,6 +36,15 @@ const checks = await page.evaluate(async () => {
     "POIs": "data/pois-sweden.bin",
   };
   const out = {};
+  // Familienprofil hochladen (POST aus dem Browser) und damit routen
+  try {
+    const up = await fetch("https://brouter.de/brouter/profile", { method: "POST", body: "---context:global\nassign validForBikes = true\n---context:way\nassign costfactor = 1\n---context:node\nassign initialcost = 0\n", headers: { "Content-Type": "text/plain" } });
+    const j = await up.json();
+    const r = await fetch(`https://brouter.de/brouter?lonlats=13.0,55.6|13.05,55.62&profile=${j.profileid}&alternativeidx=0&format=geojson`);
+    out["Eigenes BRouter-Profil"] = j.profileid && r.ok ? "ok" : `Upload ${JSON.stringify(j).slice(0, 80)}, Routing HTTP ${r.status}`;
+  } catch (e) {
+    out["Eigenes BRouter-Profil"] = `Fehler: ${e.message}`;
+  }
   for (const [name, url] of Object.entries(tests)) {
     try {
       const r = await fetch(url);
