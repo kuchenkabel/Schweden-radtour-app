@@ -30,7 +30,7 @@ await page.waitForTimeout(3000);
 // Echtes Familienprofil der App (Platzhalter wie in src/route.ts befüllt)
 const { readFileSync } = await import("node:fs");
 const familie = readFileSync(new URL("../src/brouter/familie.brf", import.meta.url), "utf8")
-  .replace(/\{\{[A-Z]+\}\}/g, (m) => ({ "{{UPHILLCOST}}": "120", "{{UPHILLCUTOFF}}": "2.5", "{{OFFROUTE}}": "0.05", "{{PRIMARY}}": "4", "{{SECONDARY}}": "2.0" })[m] ?? m);
+  .replace(/\{\{[A-Z]+\}\}/g, (m) => ({ "{{UPHILLCOST}}": "120", "{{UPHILLCUTOFF}}": "2.5", "{{OFFROUTE}}": "0.05", "{{PRIMARY}}": "4", "{{SECONDARY}}": "2.0", "{{AVOIDUNSAFE}}": "false", "{{UNPAVED}}": "2.0" })[m] ?? m);
 
 const checks = await page.evaluate(async (familie) => {
   const tests = {
