@@ -3,15 +3,14 @@ Schreibt out/routes/brouter-probe.json."""
 import json, urllib.request, urllib.parse, pathlib, time
 
 TESTS = {
-  "Sätila-Hällingsjö": [(12.43, 57.54), (12.42, 57.61)],
   "Halmstad-Torup": [(12.857, 56.674), (13.081, 56.957)],
   "Kinna-Mölnlycke": [(12.695, 57.509), (12.117, 57.659)],
-  "Ängelholm-Båstad": [(12.862, 56.243), (12.853, 56.427)],
 }
 VARIANTS = {
   "trekking": None,
-  "familie": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05"},
-  "familie-flach": {"UPHILLCOST": "250", "UPHILLCUTOFF": "2", "OFFROUTE": "0.05"},
+  "f_road_trek": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05", "PRIMARY": "3", "SECONDARY": "1.6"},
+  "f_road_mid": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0"},
+  "f_flach_mid": {"UPHILLCOST": "250", "UPHILLCUTOFF": "2", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0"},
 }
 TEMPLATE = pathlib.Path("src/brouter/familie.brf").read_text()
 PROFILE_IDS = {}

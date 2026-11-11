@@ -12,8 +12,8 @@ export const PROFILE_INFO: Record<RouteProfile, { label: string; hint: string }>
 };
 
 const PROFILE_PARAMS: Record<Exclude<RouteProfile, "trekking">, Record<string, string>> = {
-  familie: { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05" },
-  "familie-flach": { UPHILLCOST: "250", UPHILLCUTOFF: "2", OFFROUTE: "0.05" },
+  familie: { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0" },
+  "familie-flach": { UPHILLCOST: "250", UPHILLCUTOFF: "2", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0" },
 };
 
 export function profileText(p: Exclude<RouteProfile, "trekking">): string {

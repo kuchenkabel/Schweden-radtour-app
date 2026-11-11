@@ -352,8 +352,8 @@ assign costfactor
   # actuals roads are o.k. if we have a bike hint
   #
        if ( highway=trunk|trunk_link         ) then ( if isbike then 2.5 else 20  )
-  else if ( highway=primary|primary_link     ) then ( if isbike then 1.5 else  6  )
-  else if ( highway=secondary|secondary_link ) then ( if isbike then 1.2 else 2.5 )
+  else if ( highway=primary|primary_link     ) then ( if isbike then 1.5 else {{PRIMARY}} )
+  else if ( highway=secondary|secondary_link ) then ( if isbike then 1.2 else {{SECONDARY}} )
   else if ( highway=tertiary|tertiary_link   ) then ( if isbike then 1.0 else 1.6 )
   else if ( highway=unclassified             ) then ( if isbike then 1.0 else 1.3 )
 

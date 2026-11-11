@@ -27,7 +27,12 @@ await page.goto("http://localhost:4173/");
 await page.waitForSelector("#tabs button");
 await page.waitForTimeout(3000);
 
-const checks = await page.evaluate(async () => {
+// Echtes Familienprofil der App (Platzhalter wie in src/route.ts befüllt)
+const { readFileSync } = await import("node:fs");
+const familie = readFileSync(new URL("../src/brouter/familie.brf", import.meta.url), "utf8")
+  .replace(/\{\{[A-Z]+\}\}/g, (m) => ({ "{{UPHILLCOST}}": "120", "{{UPHILLCUTOFF}}": "2.5", "{{OFFROUTE}}": "0.05", "{{PRIMARY}}": "4", "{{SECONDARY}}": "2.0" })[m] ?? m);
+
+const checks = await page.evaluate(async (familie) => {
   const tests = {
     "Routing (BRouter)": "https://brouter.de/brouter?lonlats=13.0,55.6|13.05,55.62&profile=trekking&alternativeidx=0&format=geojson",
     "Wetter (SMHI)": "https://opendata-download-metfcst.smhi.se/api/category/snow1g/version/1/geotype/point/lon/13.0000/lat/55.6000/data.json",
@@ -38,7 +43,7 @@ const checks = await page.evaluate(async () => {
   const out = {};
   // Familienprofil hochladen (POST aus dem Browser) und damit routen
   try {
-    const up = await fetch("https://brouter.de/brouter/profile", { method: "POST", body: "---context:global\nassign validForBikes = true\n---context:way\nassign costfactor = 1\n---context:node\nassign initialcost = 0\n", headers: { "Content-Type": "text/plain" } });
+    const up = await fetch("https://brouter.de/brouter/profile", { method: "POST", body: familie, headers: { "Content-Type": "text/plain" } });
     const j = await up.json();
     const r = await fetch(`https://brouter.de/brouter?lonlats=13.0,55.6|13.05,55.62&profile=${j.profileid}&alternativeidx=0&format=geojson`);
     out["Eigenes BRouter-Profil"] = j.profileid && r.ok ? "ok" : `Upload ${JSON.stringify(j).slice(0, 80)}, Routing HTTP ${r.status}`;
@@ -54,7 +59,7 @@ const checks = await page.evaluate(async () => {
     }
   }
   return out;
-});
+}, familie);
 await browser.close();
 server.close();
 
