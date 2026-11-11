@@ -1,0 +1,27 @@
+{
+  "name": "Malmö – Göteborg (Sydkustleden + Kattegattleden)",
+  "profile": "trekking",
+  "waypoints": [
+    ["Malmö C", 55.6090, 13.0000],
+    ["Lomma", 55.6720, 13.0690],
+    ["Bjärred", 55.7170, 13.0190],
+    ["Barsebäckshamn", 55.7570, 12.9030],
+    ["Landskrona", 55.8710, 12.8300],
+    ["Råå", 56.0040, 12.7400],
+    ["Helsingborg", 56.0440, 12.6940],
+    ["Viken", 56.1430, 12.5760],
+    ["Höganäs", 56.1990, 12.5570],
+    ["Arild", 56.2710, 12.5870],
+    ["Ängelholm", 56.2430, 12.8620],
+    ["Båstad", 56.4270, 12.8530],
+    ["Mellbystrand", 56.5100, 12.9400],
+    ["Halmstad", 56.6740, 12.8570],
+    ["Haverdal", 56.7280, 12.6600],
+    ["Falkenberg", 56.9050, 12.4910],
+    ["Varberg", 57.1060, 12.2500],
+    ["Frillesås", 57.3200, 12.1600],
+    ["Kungsbacka", 57.4870, 12.0760],
+    ["Särö", 57.5000, 11.9400],
+    ["Göteborg Stena-Terminal", 57.7000, 11.9470]
+  ]
+}

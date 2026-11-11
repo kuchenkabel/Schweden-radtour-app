@@ -1,0 +1,21 @@
+name: Route berechnen (BRouter)
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["routes/**", "scripts/route_gpx.py", ".github/workflows/route.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Routen berechnen
+        run: python3 scripts/route_gpx.py routes/*.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: routes
+          path: out/routes/
