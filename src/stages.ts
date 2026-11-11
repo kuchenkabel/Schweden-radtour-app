@@ -54,10 +54,7 @@ export interface DayPlan {
   day: number;
 }
 
-/** Bevorzugung je Schlafplatz-Typ (kleiner = besser). */
-const SLEEP_PENALTY: Partial<Record<string, number>> = {
-  camping: 0, lager: 1, vindskydd: 2, stf: 3, huette: 4, hostel: 6, zeltplatz: 5,
-};
+import { SLEEP_PENALTY } from "./sleep";
 
 interface Node { km: number; poi: Poi | null; off: number }
 
@@ -72,6 +69,8 @@ export function planStages(
   routePois: RoutePoi[],
   settings: StageSettings = DEFAULT_SETTINGS,
   pinned: number[] = [],
+  /** Zusätzlicher Zuschlag je Schlafplatz (z. B. Wassernähe), kleiner = besser */
+  extra: (p: Poi) => number = () => 0,
 ): Stage[] {
   const total = cum[cum.length - 1];
   if (!(total > 0)) return [];
@@ -104,7 +103,7 @@ export function planStages(
     if (eff > S.maxKm) c += ((eff - S.maxKm) / 2) ** 2 * 10;
     const isLast = b.poi === null;
     if (eff < S.minKm && !isLast) c += ((S.minKm - eff) / 3) ** 2 * 4;
-    if (b.poi) c += (SLEEP_PENALTY[b.poi.cat] ?? 5) + (b.poi.cat === "vindskydd" && !b.poi.x?.ver ? 1.5 : 0);
+    if (b.poi) c += (SLEEP_PENALTY[b.poi.cat] ?? 5) + (b.poi.cat === "vindskydd" && !b.poi.x?.ver ? 1.5 : 0) + extra(b.poi);
     c += 4; // Grundkosten pro Tag: weniger Etappen bevorzugt, wenn sonst gleich
     return c;
   };
@@ -177,13 +176,18 @@ export function planStages(
 
 /** Fügt Ruhetage ein und nummeriert die Tage. */
 export function toDayPlan(stages: Stage[], restAfter: number): DayPlan[] {
+  const REST_OK = new Set(["camping", "stf", "hostel", "huette"]);
   const out: DayPlan[] = [];
   let day = 1, ridden = 0;
   stages.forEach((stage, i) => {
-    out.push({ type: "ride", stage: { ...stage, day }, day });
+    const restNext = restAfter > 0 && ridden + 1 === restAfter && i < stages.length - 1;
+    const warnings = restNext && stage.end && !REST_OK.has(stage.end.cat)
+      ? [...stage.warnings, "Ruhetag folgt: besser ein Campingplatz mit Duschen und Waschmaschine"]
+      : stage.warnings;
+    out.push({ type: "ride", stage: { ...stage, day, warnings }, day });
     day++;
     ridden++;
-    if (restAfter > 0 && ridden === restAfter && i < stages.length - 1) {
+    if (restNext) {
       out.push({ type: "rest", day });
       day++;
       ridden = 0;
