@@ -199,6 +199,8 @@ export function scan(grid: Grid, center: LonLat, radiusM: number, maxSpots = 5, 
 let testRegions: Region[] = [];
 
 export async function loadTestRegions(): Promise<void> {
+  // Testgebiete (Blindtest) gibt es nur in der App; die WebApp darf GitHub-Releases nicht lesen (CORS)
+  if (!Capacitor.isNativePlatform()) return;
   testRegions = await load<Region[]>("eignungTests", []);
   try {
     const list = await getJson(`${EIGNUNG_BASE}/eignung-tests.json`);

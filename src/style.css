@@ -121,3 +121,41 @@ tr.click { cursor: pointer; }
 .spot { border-top: 1px solid var(--line); padding: 8px 0; }
 .spot .hd { cursor: pointer; }
 .spot ul { margin: 4px 0; padding-left: 18px; font-size: 13px; }
+
+/* ---------- Großer Bildschirm (Laptop/Desktop): Karte dauerhaft rechts ---------- */
+@media (min-width: 900px) and (min-height: 500px) {
+  #app, #app.nomap, #app.mapfull:not(.nomap) {
+    grid-template-columns: minmax(380px, 460px) 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "top top" "tabs map" "panel map";
+  }
+  header#top { grid-area: top; }
+  nav#tabs { grid-area: tabs; border-top: 0; border-bottom: 1px solid var(--line); padding-bottom: 0; }
+  nav#tabs button { flex-direction: row; justify-content: center; gap: 6px; font-size: 17px; padding: 10px 0; cursor: pointer; border-bottom: 3px solid transparent; }
+  nav#tabs button span { font-size: 13px; }
+  nav#tabs button.active { border-bottom-color: var(--blue); }
+  nav#tabs button:hover { background: var(--bg); }
+  #panel, #app.mapfull:not(.nomap) #panel { grid-area: panel; visibility: visible; padding: 14px 16px 32px; border-right: 1px solid var(--line); }
+  #map, #app.nomap #map { grid-area: map; visibility: visible; height: 100%; }
+  #splitter, #app.nomap #splitter { display: none; }
+  #sheet {
+    inset: auto auto 16px 16px; width: min(460px, calc(100vw - 32px)); max-height: calc(100dvh - 96px);
+    border-radius: 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  }
+  .toast { left: calc(50% + 230px); bottom: 32px; }
+  button.btn:hover, a.btn:hover, label.btn:hover { filter: brightness(1.08); }
+  .chip { cursor: pointer; }
+  .chip:hover:not(.on) { border-color: var(--blue); }
+  #mapbtns button { cursor: pointer; }
+}
+
+/* Tastatur-Bedienung sichtbar machen */
+:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+nav#tabs button:focus-visible { outline-offset: -3px; }
+
+#net { display: flex; gap: 8px; align-items: center; }
+#net .badge {
+  border: 1px solid rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.12); color: #fff; border-radius: 12px;
+  padding: 2px 8px; font-size: 12px; cursor: pointer;
+}
+#net .badge.bad { background: var(--warn); border-color: var(--warn); }

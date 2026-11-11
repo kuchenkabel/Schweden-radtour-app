@@ -38,7 +38,24 @@ export function emptyPlan(): TourPlan {
   };
 }
 
-export const loadPlan = () => load<TourPlan>("plan", emptyPlan());
+/** Ergänzt fehlende Felder (alte Versionen, Import, Sync), damit die App nie an einem halben Plan scheitert. */
+export function normalizePlan(p: Partial<TourPlan> | null | undefined): TourPlan {
+  const base = emptyPlan();
+  if (!p || typeof p !== "object") return base;
+  const arr = <T>(v: unknown, fb: T[]): T[] => (Array.isArray(v) ? (v as T[]) : fb);
+  return {
+    ...base,
+    ...p,
+    version: 1,
+    waypoints: arr(p.waypoints, []),
+    line: arr(p.line, []),
+    pinned: arr(p.pinned, []),
+    done: arr(p.done, []),
+    settings: { ...DEFAULT_SETTINGS, ...(p.settings && typeof p.settings === "object" ? p.settings : {}) },
+  };
+}
+
+export const loadPlan = async () => normalizePlan(await load<TourPlan | null>("plan", null));
 export const savePlan = (p: TourPlan) => save("plan", { ...p, updated: new Date().toISOString() });
 
 export const loadPeople = () =>
@@ -58,5 +75,5 @@ export function exportPlanFile(plan: TourPlan, extras: { checks?: Record<string,
 export function importPlanFile(text: string): { plan: TourPlan; checks?: Record<string, boolean> } {
   const j = JSON.parse(text);
   if (j.kind !== "schweden-radtour-plan" || !j.plan?.line) throw new Error("Keine Plan-Datei dieser App");
-  return { plan: { ...emptyPlan(), ...j.plan }, checks: j.checks };
+  return { plan: normalizePlan(j.plan), checks: j.checks };
 }

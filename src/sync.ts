@@ -235,7 +235,7 @@ async function runOnce(): Promise<void> {
     st.lastSync = new Date().toISOString();
     st.lastError = undefined;
   } catch (e) {
-    st.lastError = navigator.onLine !== false ? (e as Error).message : "Offline – wird nachgeholt";
+    st.lastError = navigator.onLine === false ? "Offline – wird nachgeholt" : e instanceof TypeError ? "GitHub nicht erreichbar – wird nachgeholt" : (e as Error).message;
     console.log(`[sync] ${st.lastError}`);
   }
   if (changedDuringRun) st.dirty = true;
