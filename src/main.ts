@@ -4,8 +4,9 @@ import { Directory, Encoding, Filesystem } from "@capacitor/filesystem";
 import { Geolocation } from "@capacitor/geolocation";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Share } from "@capacitor/share";
-import { bboxOf, cumulativeKm, haversineKm, projectOnLine, type LonLat } from "./geo";
+import { bboxOf, climb, cumulativeKm, haversineKm, indexAtKm, projectOnLine, type LonLat } from "./geo";
 import { CAT_INFO, EXTRA_LABELS, loadCamp, loadPois, poisAlongRoute, type Cat, type Poi, type PoiIndex, type RoutePoi } from "./pois";
+import { budgetFor, rankSleep, sleepExtra, waterLabel, type Candidate } from "./sleep";
 import { alternativesNear, planStages, toDayPlan, type DayPlan, type Stage } from "./stages";
 import { brouterRoute, parseGpx, PROFILE_INFO, toGpx, type RouteProfile } from "./route";
 import { appendPoint, assemble, fromPlan, insertPoint, markRoutedDirty, movePoint, pendingLegs, removePoint, type Editable } from "./legs";
@@ -57,6 +58,8 @@ const S = {
   sync: { cfg: null as SyncConfig | null, last: "", error: "", dirty: false, busy: false },
   cycle: false,
   routing: "",
+  /** Test-Modus: Position, Uhrzeit und gefahrene km von Hand setzen */
+  fake: { on: false, picking: false, time: "14:00", km: 20 },
 };
 
 let mv: MapView;
@@ -178,7 +181,7 @@ function recompute() {
   if (line.length > 1 && S.index) {
     S.cum = cumulativeKm(line);
     S.routePois = poisAlongRoute(S.index, line, 3, S.cum);
-    S.stages = planStages(line, S.cum, S.routePois, S.plan.settings, S.plan.pinned);
+    S.stages = planStages(line, S.cum, S.routePois, S.plan.settings, S.plan.pinned, sleepExtra(S.index));
     S.days = toDayPlan(S.stages, S.plan.settings.restAfter);
   } else {
     S.cum = [];
@@ -202,6 +205,22 @@ function updateMap() {
   const pois = S.plan.line.length > 1 && !S.showAllPois ? S.routePois.map((r) => r.poi) : S.index?.all ?? [];
   mv.setPois(pois, mapCats());
   mv.setPosition(S.pos);
+}
+
+/** Aktuelle Uhrzeit; im Test-Modus die eingestellte. */
+function nowTime(): Date {
+  const d = new Date();
+  if (S.fake.on) {
+    const [h, m] = S.fake.time.split(":").map(Number);
+    d.setHours(h || 0, m || 0, 0, 0);
+  }
+  return d;
+}
+
+/** Heute gefahrene km: im Test-Modus eingestellt, sonst aus der Position auf der Route. */
+function kmToday(along: number, stage: Stage | null): number {
+  if (S.fake.on) return S.fake.km;
+  return stage ? Math.max(0, along - stage.fromKm) : 0;
 }
 
 function currentAlong(): { along: number; off: number } | null {
@@ -454,7 +473,7 @@ function dayCard(d: DayPlan): string {
   return `<div class="card day ${done ? "done" : ""}" data-day="${s.day}">
     <div class="row between"><b>Tag ${s.day} <span class="muted">${date}</span></b><b>${km(s.km)}</b></div>
     <div class="muted">↗ ${s.up} Hm ↘ ${s.down} Hm · km ${Math.round(s.fromKm)}–${Math.round(s.toKm)}</div>
-    <div>🌙 ${s.end ? `${CAT_INFO[s.end.cat].icon} ${esc(poiName(s.end))}${s.endOffKm > 0.3 ? ` <span class="muted">(${km(s.endOffKm, 1)} abseits)</span>` : ""}` : "Ziel"}</div>
+    <div>🌙 ${s.end ? `${CAT_INFO[s.end.cat].icon} ${esc(poiName(s.end))}${s.endOffKm > 0.3 ? ` <span class="muted">(${km(s.endOffKm, 1)} abseits)</span>` : ""}${waterLabel(s.end, S.index) ? ` <span class="muted">· 💧 ${esc(waterLabel(s.end, S.index))}</span>` : ""}` : "Ziel"}</div>
     ${s.lunch ? `<div>🍽️ Mittag: 🏊 ${esc(poiName(s.lunch))}</div>` : ""}
     ${elevationSvg(s)}
     ${s.warnings.map((w) => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
@@ -668,6 +687,9 @@ function renderUnterwegs(): string {
       <button class="btn secondary" id="doneStage">${S.plan.done.includes(stage.day) ? "Erledigt ✓" : "Etappe erledigt"}</button></div></div>`;
   }
 
+  html += sleepSuggestHtml(cur, along, stage);
+  html += fakeGpsHtml();
+
   html += `<h2>Was kommt als Nächstes</h2>${catChips(S.nextCats, ["badplats", "spielplatz", "wasser", "wc", "supermarkt", "vindskydd", "lager", "zeltplatz", "camping", "stf", "radladen", "gas", "apotek", "bahnhof"], "next")}
     <div class="card">${
       ahead
@@ -682,6 +704,53 @@ function renderUnterwegs(): string {
     }</div>`;
   html += bailoutHtml();
   return html;
+}
+
+const SLEEP_CATS = new Set(Object.keys(CAT_INFO).filter((c) => CAT_INFO[c as Cat].sleep) as Cat[]);
+
+function sleepSuggestHtml(cur: { along: number; off: number } | null, along: number, stage: Stage | null): string {
+  if (!S.pos) return `<div class="card"><b>🌙 Schlafplatz-Vorschläge</b><p class="muted">Sobald eine GPS-Position da ist, schlage ich passende Plätze nach Uhrzeit und gefahrenen Kilometern vor. Zum Testen: Fake-GPS unten.</p></div>`;
+  const now = nowTime();
+  const done = kmToday(along, stage);
+  const b = budgetFor({ now, kmToday: done }, S.plan.settings);
+  const cands: Candidate[] = [];
+  const onRoute = !!cur && cur.off < 5 && S.plan.line.length > 1;
+  if (onRoute) {
+    const i0 = indexAtKm(S.cum, along);
+    for (const r of S.routePois) {
+      if (!SLEEP_CATS.has(r.poi.cat) || r.alongKm <= along || r.offKm > S.plan.settings.sleepCorridorKm) continue;
+      cands.push({ poi: r.poi, distKm: r.alongKm - along + r.offKm, up: climb(S.plan.line, i0, indexAtKm(S.cum, r.alongKm)).up, offKm: r.offKm });
+    }
+  } else if (S.index) {
+    for (const n of S.index.nearest(S.pos, SLEEP_CATS, 40, 60)) cands.push({ poi: n.poi, distKm: n.km * 1.3, up: 0, offKm: 0 });
+  }
+  const list = rankSleep(cands, b, S.index, S.plan.settings.hmPerKm);
+  const clock = now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  return `<div class="card"><b>🌙 Schlafplatz-Vorschläge</b> <span class="muted">${S.fake.on ? "🧪 Test · " : ""}${clock} Uhr · ${Math.round(done)} km heute</span>
+    <p class="muted">${esc(b.hint)}${onRoute ? "" : " (Abseits der Route: Luftlinie × 1,3 geschätzt.)"}</p>
+    ${
+      list
+        .map(
+          (r) => `<div class="list-item click" data-poi="${r.poi.id}"><span class="ico">${CAT_INFO[r.poi.cat].icon}</span>
+          <div class="main"><b>${esc(poiName(r.poi))}</b><div class="muted">${esc(CAT_INFO[r.poi.cat].label)}${r.water ? ` · 💧 ${esc(r.water)}` : ""}${r.up ? ` · ↗ ${r.up} Hm` : ""}${r.offKm > 0.3 ? ` · ${km(r.offKm, 1)} abseits` : ""}${r.note ? ` · ${esc(r.note)}` : ""}</div></div>
+          <span class="dist">${km(r.distKm, 1)}</span></div>`,
+        )
+        .join("") || `<p class="muted">Kein Schlafplatz in Reichweite gefunden.</p>`
+    }</div>`;
+}
+
+function fakeGpsHtml(): string {
+  const f = S.fake;
+  return `<details class="card"${f.on ? " open" : ""}><summary><b>🧪 Test: Fake-GPS</b></summary>
+    <label class="row"><input type="checkbox" id="fakeOn"${f.on ? " checked" : ""}> Test-Modus an (echtes GPS wird ignoriert)</label>
+    ${
+      f.on
+        ? `<div class="row" style="margin-top:6px"><button class="btn small" id="fakePick">${f.picking ? "Tippe auf die Karte …" : "Position auf Karte setzen"}</button>
+        <button class="btn small secondary" id="fakeStart">Auf Etappenstart</button></div>
+        <div class="row" style="margin-top:6px"><label>Uhrzeit <input type="time" id="fakeTime" value="${f.time}"></label>
+        <label>km heute <input type="number" id="fakeKm" min="0" max="120" value="${f.km}" style="width:5em"></label></div>`
+        : `<p class="muted">Setzt Position, Uhrzeit und gefahrene km von Hand, um die Vorschläge zu prüfen.</p>`
+    }</details>`;
 }
 
 function weatherHtml(stage: Stage, along: number): string {
@@ -771,6 +840,30 @@ function bindUnterwegs() {
     }),
   );
   bindPoiClicks();
+  $("#fakeOn")?.addEventListener("change", (ev) => {
+    S.fake.on = (ev.target as HTMLInputElement).checked;
+    S.fake.picking = false;
+    if (S.fake.on && !S.pos) S.pos = S.plan.line[0] ?? null;
+    mv.setPickMode(false);
+    mv.setPosition(S.pos);
+    render();
+  });
+  $("#fakePick")?.addEventListener("click", () => {
+    S.fake.picking = !S.fake.picking;
+    mv.setPickMode(S.fake.picking);
+    if (S.fake.picking) toast("Tippe auf die Karte, wo du gerade bist");
+    render();
+  });
+  $("#fakeStart")?.addEventListener("click", () => {
+    const s = todayStage();
+    const i = s ? indexAtKm(S.cum, s.fromKm) : 0;
+    S.pos = (S.plan.line[i] ?? S.plan.line[0] ?? null) as LonLat | null;
+    S.fake.km = 0;
+    mv.setPosition(S.pos);
+    render();
+  });
+  $("#fakeTime")?.addEventListener("change", (ev) => { S.fake.time = (ev.target as HTMLInputElement).value || "14:00"; render(); });
+  $("#fakeKm")?.addEventListener("change", (ev) => { S.fake.km = Math.max(0, Number((ev.target as HTMLInputElement).value) || 0); render(); });
   $("#osmand")?.addEventListener("click", () => {
     const s = todayStage();
     if (!s) return;
@@ -1219,7 +1312,7 @@ async function startGps() {
       if (perm.location === "denied") return;
     }
     await Geolocation.watchPosition({ enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }, (pos) => {
-      if (!pos) return;
+      if (!pos || S.fake.on) return;
       const prev = S.pos;
       S.pos = [pos.coords.longitude, pos.coords.latitude];
       S.posAccuracy = pos.coords.accuracy;
@@ -1399,7 +1492,17 @@ async function init() {
   mv.onWaypointClick((i) => waypointMenu(i));
   mv.onRouteDrag((at, to) => applyEdit(insertPoint(currentEdit(), at, to)));
   mv.map.on("style.load", updateMap);
-  mv.onPick((p) => checkPoint(p));
+  mv.onPick((p) => {
+    if (S.fake.picking) {
+      S.fake.picking = false;
+      mv.setPickMode(false);
+      S.pos = p;
+      mv.setPosition(p);
+      render();
+      return;
+    }
+    checkPoint(p);
+  });
   $("#btnPick").addEventListener("click", () => setPickMode(!S.pickMode));
   $("#btnSat").addEventListener("click", () => setSat(!S.sat));
   await initSplitter();

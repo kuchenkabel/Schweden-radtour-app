@@ -2,9 +2,8 @@ name: Android-APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths-ignore: ["docs/**", "**.md", ".github/workflows/data.yml", ".github/workflows/tiles.yml", ".github/workflows/api-check.yml", "scripts/build_pois.py"]
+  # Vorübergehend nur von Hand: Bis zur Feldphase wird in der WebApp geplant, keine APK bei jedem Merge.
+  # Zum Wiedereinschalten den früheren push-Trigger (branches: [main], paths-ignore: docs, *.md, data/tiles/api-check-Workflows, build_pois.py) zurückholen.
 
 permissions:
   contents: write
