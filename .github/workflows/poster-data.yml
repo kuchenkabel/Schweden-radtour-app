@@ -1,0 +1,83 @@
+name: Posterkarte – Daten
+
+# Schneidet aus den Geofabrik-Extrakten (Schweden + Dänemark) alles aus, was die
+# druckbare Posterkarte Südschweden braucht, und legt es als GeoPackage im Release
+# "poster-data" ab. Gerendert wird danach mit scripts/poster/render_poster.py.
+
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/poster-data.yml"]
+
+permissions:
+  contents: write
+
+env:
+  BBOX: "11.0,55.15,14.1,58.15"
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Werkzeuge
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq osmium-tool gdal-bin unzip
+      - name: OSM-Extrakte laden und zuschneiden
+        run: |
+          mkdir -p work out && cd work
+          for c in sweden denmark; do
+            curl -sSfL -o $c.pbf https://download.geofabrik.de/europe/$c-latest.osm.pbf
+            osmium extract -s smart -b "$BBOX" $c.pbf -o $c-cut.pbf
+            rm $c.pbf
+          done
+          osmium merge sweden-cut.pbf denmark-cut.pbf -o cut.pbf
+          osmium fileinfo -e cut.pbf | grep -E "Number of (nodes|ways|relations)"
+          osmium tags-filter cut.pbf \
+            w/highway=motorway,motorway_link,trunk,trunk_link,primary,primary_link,secondary,secondary_link,tertiary,tertiary_link,unclassified,cycleway \
+            w/railway=rail,light_rail w/route=ferry r/route=bicycle,ferry \
+            nwr/natural=water,wood,wetland,beach,heath,bare_rock,scrub,peak \
+            nwr/landuse=forest,residential,industrial,commercial,retail,quarry \
+            w/waterway=river,canal nwr/place=city,town,village,hamlet,island,islet \
+            nwr/boundary=national_park,protected_area nwr/leisure=nature_reserve \
+            nwr/aeroway=aerodrome \
+            -o filtered.pbf
+          ls -lh filtered.pbf
+      - name: In GeoPackage umwandeln
+        run: |
+          cd work
+          sed -e 's/^attributes=name,highway,waterway,aerialway,barrier,man_made.*/attributes=name,highway,waterway,railway,route,ref,bicycle,surface,tracktype/' \
+              -e 's/^attributes=name,type$/attributes=name,type,route,network,ref,cycle_network,osmc:symbol/' \
+              /usr/share/gdal/osmconf.ini > osmconf.ini
+          grep -n "^attributes" osmconf.ini
+          OSM_CONFIG_FILE=osmconf.ini ogr2ogr -f GPKG ../out/osm.gpkg filtered.pbf \
+            -oo CONFIG_FILE=osmconf.ini -oo INTERLEAVED_READING=YES -skipfailures
+          ogrinfo -so ../out/osm.gpkg | head -20
+      - name: Meeresflächen (osmdata.openstreetmap.de)
+        run: |
+          cd work
+          curl -sSfL -o water.zip https://osmdata.openstreetmap.de/download/water-polygons-split-4326.zip
+          unzip -q water.zip
+          ogr2ogr -f GPKG ../out/sea.gpkg water-polygons-split-4326/water_polygons.shp \
+            -spat $(echo $BBOX | tr ',' ' ') -clipsrc spat_extent -nln sea
+          ogrinfo -so ../out/sea.gpkg sea | grep "Feature Count"
+      - name: Höhenmodell (Copernicus GLO-30) und Schummerung
+        run: |
+          cd work
+          for la in 55 56 57 58; do for lo in 010 011 012 013 014; do
+            n=Copernicus_DSM_COG_10_N${la}_00_E${lo}_00_DEM
+            curl -sSfL -o $n.tif https://copernicus-dem-30m.s3.amazonaws.com/$n/$n.tif || echo "fehlt: $n"
+          done; done
+          gdalbuildvrt dem.vrt Copernicus_*.tif
+          # SWEREF99 TM, 50 m Raster reicht für 1:200.000
+          gdalwarp -t_srs EPSG:3006 -te 280000 6110000 470000 6450000 -tr 50 50 -r bilinear \
+            -co COMPRESS=DEFLATE -co PREDICTOR=3 -ot Float32 dem.vrt ../out/dem50.tif
+          ls -lh ../out
+      - name: Als Release "poster-data" veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view poster-data >/dev/null 2>&1 || \
+            gh release create poster-data --prerelease --title "Posterkarte: Rohdaten" \
+              --notes "Ausschnitt Südschweden für die Posterkarte. © OpenStreetMap-Mitwirkende (ODbL); Meeresflächen osmdata.openstreetmap.de; Höhen: Copernicus DEM GLO-30 © DLR e.V. 2010-2014 und © Airbus Defence and Space GmbH 2014-2018, bereitgestellt im Rahmen von COPERNICUS durch die EU und ESA."
+          gh release upload poster-data out/* --clobber
