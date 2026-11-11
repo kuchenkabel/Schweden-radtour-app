@@ -2,7 +2,7 @@
 # *** (https://github.com/abrensch/brouter, misc/profiles2/trekking.brf).
 # *** Ziel: offizielle Radrouten bevorzugen, große Straßen meiden, wenig und vor allem
 # *** keine steilen Höhenmeter, schlechten Schotter meiden (Kindersitz/Anhänger).
-# *** Platzhalter {{...}} setzt die App vor dem Hochladen ein.
+# *** Platzhalter (Name in doppelten geschweiften Klammern) setzt die App vor dem Hochladen ein.
 
 ---context:global   # following code refers to global config
 

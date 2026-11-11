@@ -58,7 +58,7 @@ export function normalizePlan(p: Partial<TourPlan> | null | undefined): TourPlan
     line: arr(p.line, []),
     cuts: Array.isArray(p.cuts) ? p.cuts : undefined,
     legFixed: Array.isArray(p.legFixed) ? p.legFixed : undefined,
-    profile: p.profile === "trekking" || p.profile === "familie-flach" ? p.profile : "familie",
+    profile: p.profile === "trekking" || p.profile === "familie-flach" || p.profile === "familie-ruhig" ? p.profile : "familie",
     pinned: arr(p.pinned, []),
     done: arr(p.done, []),
     settings: { ...DEFAULT_SETTINGS, ...(p.settings && typeof p.settings === "object" ? p.settings : {}) },

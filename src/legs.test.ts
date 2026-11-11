@@ -79,3 +79,10 @@ describe("Steile Anstiege", () => {
     expect(s[0].gainM).toBeGreaterThanOrEqual(30);
   });
 });
+
+import { profileText } from "./route";
+describe("Familienprofil", () => {
+  it("alle Platzhalter werden ersetzt", () => {
+    for (const p of ["familie", "familie-flach", "familie-ruhig"] as const) expect(profileText(p)).not.toMatch(/\{\{/);
+  });
+});

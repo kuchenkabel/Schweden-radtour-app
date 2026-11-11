@@ -3,17 +3,21 @@ import type { LonLat } from "./geo";
 import familieTemplate from "./brouter/familie.brf?raw";
 
 /** Routing-Profile: eigenes Familienprofil (wird beim Server hochgeladen) oder BRouter-Standard. */
-export type RouteProfile = "familie" | "familie-flach" | "trekking";
+export type RouteProfile = "familie" | "familie-flach" | "familie-ruhig" | "trekking";
 
 export const PROFILE_INFO: Record<RouteProfile, { label: string; hint: string }> = {
   familie: { label: "Familie", hint: "Radrouten bevorzugt, große Straßen gemieden, steile Anstiege teuer" },
-  "familie-flach": { label: "Familie, so flach wie möglich", hint: "Wie Familie, nimmt für weniger Höhenmeter auch Umwege" },
+  "familie-flach": { label: "Familie, so flach wie möglich", hint: "Wie Familie, nimmt für weniger und flachere Anstiege auch Umwege" },
+  "familie-ruhig": { label: "Familie, möglichst ruhig", hint: "Meidet jede Straße ohne Radweg-Hinweis, kann deutlich längere Umwege machen" },
   trekking: { label: "Standard (BRouter Trekking)", hint: "Direkter, fährt auch auf Landstraßen" },
 };
 
 const PROFILE_PARAMS: Record<Exclude<RouteProfile, "trekking">, Record<string, string>> = {
-  familie: { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0" },
-  "familie-flach": { UPHILLCOST: "250", UPHILLCUTOFF: "2", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0" },
+  // Abgestimmt auf Testabschnitten (scripts/brouter_probe.py), z.B. Kinna–Mölnlycke:
+  // trekking 52 km/432 Hm/max 14 %, familie 62 km/412 Hm/max 9 %, flach 72 km/414 Hm/max 7 %, ruhig 94 km/540 Hm
+  familie: { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0", AVOIDUNSAFE: "false", UNPAVED: "2.0" },
+  "familie-flach": { UPHILLCOST: "250", UPHILLCUTOFF: "2", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0", AVOIDUNSAFE: "false", UNPAVED: "2.0" },
+  "familie-ruhig": { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0", AVOIDUNSAFE: "true", UNPAVED: "2.0" },
 };
 
 export function profileText(p: Exclude<RouteProfile, "trekking">): string {

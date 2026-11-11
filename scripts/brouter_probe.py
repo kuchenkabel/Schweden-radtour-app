@@ -3,13 +3,14 @@ Schreibt out/routes/brouter-probe.json."""
 import json, urllib.request, urllib.parse, pathlib, time
 
 TESTS = {
+  "Halmstad-Torup": [(12.857, 56.674), (13.081, 56.957)],
   "Kinna-Mölnlycke": [(12.695, 57.509), (12.117, 57.659)],
 }
 VARIANTS = {
-  "f_safe_unp2": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0", "AVOIDUNSAFE": "true", "UNPAVED": "2.0"},
-  "f_nosafe_unp2": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0", "AVOIDUNSAFE": "false", "UNPAVED": "2.0"},
-  "f_safe_unp1": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0", "AVOIDUNSAFE": "true", "UNPAVED": "1.0"},
-  "f_nosafe_flach": {"UPHILLCOST": "250", "UPHILLCUTOFF": "2", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0", "AVOIDUNSAFE": "false", "UNPAVED": "2.0"},
+  # Gleiche Werte wie PROFILE_PARAMS in src/route.ts
+  "trekking": None,
+  "familie": {"UPHILLCOST": "120", "UPHILLCUTOFF": "2.5", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0", "AVOIDUNSAFE": "false", "UNPAVED": "2.0"},
+  "familie-flach": {"UPHILLCOST": "250", "UPHILLCUTOFF": "2", "OFFROUTE": "0.05", "PRIMARY": "4", "SECONDARY": "2.0", "AVOIDUNSAFE": "false", "UNPAVED": "2.0"},
 }
 TEMPLATE = pathlib.Path("src/brouter/familie.brf").read_text()
 PROFILE_IDS = {}
