@@ -186,13 +186,18 @@ function recompute() {
   updateMap();
 }
 
+/** Auf „Unterwegs“ zeigt die Karte dieselben Kategorien wie „Was kommt als Nächstes“, sonst die Kartenebenen. */
+function mapCats(): Set<Cat> {
+  return S.tab === "unterwegs" ? S.nextCats : S.visible;
+}
+
 function updateMap() {
   if (!mv) return;
   mv.setRoute(S.plan.line);
   mv.setWaypoints(S.tab === "planen" ? S.plan.waypoints : []);
   mv.setStages(S.days.filter((d) => d.stage).map((d) => d.stage!));
   const pois = S.plan.line.length > 1 && !S.showAllPois ? S.routePois.map((r) => r.poi) : S.index?.all ?? [];
-  mv.setPois(pois, S.visible);
+  mv.setPois(pois, mapCats());
   mv.setPosition(S.pos);
 }
 
@@ -687,6 +692,7 @@ function bindUnterwegs() {
       const c = b.dataset.next as Cat;
       S.nextCats.has(c) ? S.nextCats.delete(c) : S.nextCats.add(c);
       save("nextCats", [...S.nextCats]);
+      mv?.setVisibleCats(mapCats());
       render();
     }),
   );
