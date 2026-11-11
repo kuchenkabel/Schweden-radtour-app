@@ -1,0 +1,24 @@
+name: Route berechnen (BRouter)
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ["routes/**", "scripts/route_gpx.py", ".github/workflows/route.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  route:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Routen berechnen
+        run: python3 scripts/route_gpx.py routes/*.json
+      - name: Als Release route-latest veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view route-latest >/dev/null 2>&1 || \
+            gh release create route-latest --prerelease --title "Routen (GPX)" --notes "Automatisch aus routes/*.json mit BRouter berechnet."
+          gh release upload route-latest out/routes/* --clobber
