@@ -5,3 +5,4 @@ public/fonts
 android/app/build
 *.keystore
 __pycache__/
+public/data/camp-sweden.bin

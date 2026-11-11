@@ -305,7 +305,17 @@ function render() {
   panel().innerHTML = fn();
   bindCommon();
   ({ planen: bindPlanen, unterwegs: bindUnterwegs, listen: bindListen, notfall: bindNotfall, mehr: bindMehr })[S.tab]();
-  $("#net").textContent = S.online ? "online" : "offline";
+  renderHeader();
+  if (mv && !S.pickMode) mv.map.getCanvas().style.cursor = S.addMode ? "crosshair" : "";
+}
+
+/** Kopfzeile: Netz und Sync-Zustand auf einen Blick; Tipp auf Sync öffnet die Einstellungen. */
+function renderHeader() {
+  const y = S.sync;
+  const sync = !y.cfg ? "" : y.busy ? "⟳ Sync" : y.error ? "⚠️ Sync" : y.dirty ? "⟳ Sync" : "☁️ synchron";
+  const title = !y.cfg ? "" : y.error ? `Sync-Problem: ${y.error}` : y.dirty ? "Änderungen werden hochgeladen" : `Zuletzt abgeglichen ${y.last ? new Date(y.last).toLocaleString("de-DE") : "–"}`;
+  $("#net").innerHTML = `${sync ? `<button id="syncBadge" class="badge${y.error ? " bad" : ""}" title="${esc(title)}">${sync}</button>` : ""}<span>${S.online ? "online" : "offline"}</span>`;
+  $("#syncBadge")?.addEventListener("click", () => setTab("mehr"));
 }
 
 function catChips(set: Set<Cat>, cats: Cat[], name: string) {
@@ -1045,7 +1055,7 @@ function renderMehr(): string {
     }).join("")}</div>
     <div class="card"><label>Kartenquelle <select id="mapSource"><option value="auto">Automatisch (online, sonst Paket)</option>
       ${S.packs.map((p) => `<option value="${p.region}" ${S.mapSource === p.region ? "selected" : ""}>Offline: ${esc(REGIONS.find((r) => r.id === p.region)?.name ?? p.region)}</option>`).join("")}</select></label></div>` : nurApp}
-    <h2>Luftbild (Esri)</h2><div class="card"><p class="muted">Kostenloses Konto auf location.arcgis.com anlegen, unter Developer credentials einen API-Schlüssel mit dem Recht 'Basemaps' erstellen und hier einfügen. Der Schlüssel bleibt nur auf diesem Handy.</p>
+    <h2>Luftbild (Esri)</h2><div class="card"><p class="muted">Kostenloses Konto auf location.arcgis.com anlegen, unter Developer credentials einen API-Schlüssel mit dem Recht 'Basemaps' erstellen und hier einfügen. Der Schlüssel bleibt nur auf diesem Gerät.</p>
       <input type="password" id="esriKey" placeholder="API-Schlüssel" value="${esc(S.esriKey)}" autocomplete="off" style="width:100%">
       <div class="row" style="margin-top:8px"><button class="btn small" id="esriSave">Speichern</button><button class="btn small danger" id="esriDel">Löschen</button></div></div>
     <h2>Erinnerungen</h2><div class="card"><p>Während der Tour täglich um 8:30 „Wind und Etappe checken“ und um 15:30 „Camp aufbauen, Wasser auffüllen, Zeckencheck“.</p>
@@ -1152,6 +1162,7 @@ async function refreshSyncStatus() {
   S.sync.error = st.lastError ?? "";
   S.sync.dirty = st.dirty;
   if (S.tab === "mehr") render();
+  else renderHeader();
 }
 
 async function applySynced() {
@@ -1258,6 +1269,29 @@ function bindSync() {
 }
 
 // ---------- Start ----------
+/** Unerwartete Fehler nicht still verschlucken, aber auch nicht mit Meldungen fluten. */
+let lastErrToast = 0;
+function reportError(msg: string) {
+  console.log(`[fehler] ${msg}`);
+  if (Date.now() - lastErrToast < 10000) return;
+  lastErrToast = Date.now();
+  toast(`Da ist etwas schiefgegangen: ${msg.slice(0, 120)}`, 5000);
+}
+window.addEventListener("error", (e) => { if (e.message) reportError(e.message); });
+window.addEventListener("unhandledrejection", (e) => reportError(String((e.reason as Error)?.message ?? e.reason)));
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!$("#sheet").hidden) closeSheet();
+  else if (S.pickMode) setPickMode(false);
+  else if (S.addMode) { S.addMode = false; render(); }
+});
+
+// Im Browser warnen, wenn beim Schließen noch Änderungen nicht hochgeladen sind
+window.addEventListener("beforeunload", (e) => {
+  if (!Capacitor.isNativePlatform() && S.sync.cfg && S.sync.dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+
 async function init() {
   S.plan = await loadPlan();
   S.checks = await loadChecks();
