@@ -8,11 +8,13 @@ TESTS = {
   "Ängelholm-Båstad": [(12.862, 56.243), (12.853, 56.427)],
 }
 VARIANTS = {
-  "trekking": {},
-  "familie": {"avoid_unsafe": "true", "uphillcost": "80", "uphillcutoff": "3", "downhillcost": "60", "unpavedPenalty": "2"},
-  "familie_steil": {"avoid_unsafe": "true", "uphillcost": "150", "uphillcutoff": "2", "downhillcost": "60", "unpavedPenalty": "2"},
-  "familie_radrouten": {"avoid_unsafe": "true", "uphillcost": "80", "uphillcutoff": "3", "downhillcost": "60", "unpavedPenalty": "2", "stick_to_cycleroutes": "true"},
+  "trekking": None,
+  "familie": {"UPHILLCOST": "80", "UPHILLCUTOFF": "3", "OFFROUTE": "0.3"},
+  "familie_flach": {"UPHILLCOST": "150", "UPHILLCUTOFF": "2", "OFFROUTE": "0.3"},
+  "familie_radrouten": {"UPHILLCOST": "80", "UPHILLCUTOFF": "3", "OFFROUTE": "0.6"},
 }
+TEMPLATE = pathlib.Path("src/brouter/familie.brf").read_text()
+PROFILE_IDS = {}
 def get(url, data=None, headers=None):
   req = urllib.request.Request(url, data=data, headers={"User-Agent": "radtour-planung", **(headers or {})})
   with urllib.request.urlopen(req, timeout=90) as r:
@@ -39,19 +41,28 @@ def grade_stats(coords):
 out = {"routes": {}}
 for name, (a, b) in TESTS.items():
   for v, params in VARIANTS.items():
-    q = {"lonlats": f"{a[0]},{a[1]}|{b[0]},{b[1]}", "profile": "trekking", "alternativeidx": "0", "format": "geojson"}
-    for k, val in params.items(): q["profile:" + k] = val
     try:
+      prof = "trekking"
+      if params:
+        if v not in PROFILE_IDS:
+          txt = TEMPLATE
+          for k, val in params.items(): txt = txt.replace("{{" + k + "}}", val)
+          st, h, body = get("https://brouter.de/brouter/profile", data=txt.encode(), headers={"Content-Type": "text/plain"})
+          j = json.loads(body)
+          if "profileid" not in j: raise Exception("Upload: " + body[:300])
+          PROFILE_IDS[v] = j["profileid"]
+        prof = PROFILE_IDS[v]
+      q = {"lonlats": f"{a[0]},{a[1]}|{b[0]},{b[1]}", "profile": prof, "alternativeidx": "0", "format": "geojson"}
       st, h, body = get("https://brouter.de/brouter?" + urllib.parse.urlencode(q, safe=",|:"))
       f = json.loads(body)["features"][0]; p = f["properties"]
-      out["routes"][f"{name}/{v}"] = {"km": int(p["track-length"]) / 1000, "ascend": int(p["filtered ascend"]), "cost": int(p["cost"]), "maxgrade200m": grade_stats(f["geometry"]["coordinates"])}
+      out["routes"][f"{name}/{v}"] = {"km": int(p["track-length"]) / 1000, "ascend": int(p["filtered ascend"]), "cost": int(p["cost"]), "profile": prof, "maxgrade200m": grade_stats(f["geometry"]["coordinates"])}
     except Exception as e:
       out["routes"][f"{name}/{v}"] = {"error": str(e)[:300]}
     time.sleep(1)
 
 # CORS für GET mit Profilparametern
 try:
-  st, h, _ = get("https://brouter.de/brouter?lonlats=12.857,56.674|12.9,56.7&profile=trekking&format=geojson&profile:avoid_unsafe=true", headers={"Origin": "https://kuchenkabel.github.io"})
+  st, h, _ = get("https://brouter.de/brouter?lonlats=12.857,56.674|12.9,56.7&profile=" + PROFILE_IDS.get("familie", "trekking") + "&format=geojson", headers={"Origin": "https://kuchenkabel.github.io"})
   out["cors_get"] = {k: v for k, v in h.items() if k.lower().startswith("access-control")}
 except Exception as e:
   out["cors_get"] = str(e)[:300]
