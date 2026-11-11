@@ -347,6 +347,8 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
   const startRouteDrag = (e: any) => {
     if (!state.editable || !routeDragCb || pickMode || state.route.length < 2) return;
     if (e.originalEvent?.touches && e.originalEvent.touches.length > 1) return;
+    // Gesten auf einem Wegpunkt-Marker gehören dem Marker (verschieben), nicht der Linie
+    if ((e.originalEvent?.target as HTMLElement | undefined)?.closest?.(".maplibregl-marker")) return;
     const { x, y } = e.point;
     if (!map.getLayer("route")) return;
     const hits = map.queryRenderedFeatures([[x - 14, y - 14], [x + 14, y + 14]], { layers: ["route"] });
