@@ -1,0 +1,33 @@
+{
+  "name": "Trelleborg – Kullaberg – Halmstad – Seen und Wald – Göteborg",
+  "profile": "trekking",
+  "waypoints": [
+    ["Trelleborg Fährhafen", 55.3720, 13.1560],
+    ["Höllviken", 55.4110, 12.9530],
+    ["Malmö C", 55.6090, 13.0000],
+    ["Lomma", 55.6720, 13.0690],
+    ["Barsebäckshamn", 55.7570, 12.9030],
+    ["Landskrona", 55.8710, 12.8300],
+    ["Helsingborg", 56.0440, 12.6940],
+    ["Viken", 56.1430, 12.5760],
+    ["Höganäs", 56.1990, 12.5570],
+    ["Mölle", 56.2830, 12.4970],
+    ["Arild", 56.2710, 12.5870],
+    ["Ängelholm", 56.2430, 12.8620],
+    ["Båstad", 56.4270, 12.8530],
+    ["Mellbystrand", 56.5100, 12.9400],
+    ["Halmstad", 56.6740, 12.8570],
+    ["Simlångsdalen", 56.7000, 13.1000],
+    ["Torup", 56.9570, 13.0810],
+    ["Hyltebruk", 56.9960, 13.2410],
+    ["Kinnared", 57.0300, 13.1000],
+    ["Fegen", 57.0950, 13.0300],
+    ["Ullared", 57.1350, 12.7200],
+    ["Älvsered", 57.2400, 12.8600],
+    ["Kinna", 57.5090, 12.6950],
+    ["Sätila", 57.5400, 12.4300],
+    ["Hällingsjö", 57.6100, 12.4200],
+    ["Mölnlycke", 57.6590, 12.1170],
+    ["Göteborg Stena-Terminal", 57.7000, 11.9470]
+  ]
+}
