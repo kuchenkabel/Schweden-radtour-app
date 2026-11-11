@@ -1,12 +1,57 @@
-import { getJson } from "./http";
+import { getJson, postText } from "./http";
 import type { LonLat } from "./geo";
+import familieTemplate from "./brouter/familie.brf?raw";
+
+/** Routing-Profile: eigenes Familienprofil (wird beim Server hochgeladen) oder BRouter-Standard. */
+export type RouteProfile = "familie" | "familie-flach" | "familie-ruhig" | "trekking";
+
+export const PROFILE_INFO: Record<RouteProfile, { label: string; hint: string }> = {
+  familie: { label: "Familie", hint: "Radrouten bevorzugt, große Straßen gemieden, steile Anstiege teuer" },
+  "familie-flach": { label: "Familie, so flach wie möglich", hint: "Wie Familie, nimmt für weniger und flachere Anstiege auch Umwege" },
+  "familie-ruhig": { label: "Familie, möglichst ruhig", hint: "Meidet jede Straße ohne Radweg-Hinweis, kann deutlich längere Umwege machen" },
+  trekking: { label: "Standard (BRouter Trekking)", hint: "Direkter, fährt auch auf Landstraßen" },
+};
+
+const PROFILE_PARAMS: Record<Exclude<RouteProfile, "trekking">, Record<string, string>> = {
+  // Abgestimmt auf Testabschnitten (scripts/brouter_probe.py), z.B. Kinna–Mölnlycke:
+  // trekking 52 km/432 Hm/max 14 %, familie 62 km/412 Hm/max 9 %, flach 72 km/414 Hm/max 7 %, ruhig 94 km/540 Hm
+  familie: { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0", AVOIDUNSAFE: "false", UNPAVED: "2.0" },
+  "familie-flach": { UPHILLCOST: "250", UPHILLCUTOFF: "2", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0", AVOIDUNSAFE: "false", UNPAVED: "2.0" },
+  "familie-ruhig": { UPHILLCOST: "120", UPHILLCUTOFF: "2.5", OFFROUTE: "0.05", PRIMARY: "4", SECONDARY: "2.0", AVOIDUNSAFE: "true", UNPAVED: "2.0" },
+};
+
+export function profileText(p: Exclude<RouteProfile, "trekking">): string {
+  let t = familieTemplate;
+  for (const [k, v] of Object.entries(PROFILE_PARAMS[p])) t = t.split(`{{${k}}}`).join(v);
+  return t;
+}
+
+const BROUTER = "https://brouter.de/brouter";
+const uploaded: Partial<Record<RouteProfile, string>> = {};
+
+/** Lädt das Profil zum BRouter-Server hoch (einmal pro App-Start) und liefert dessen ID. */
+async function profileId(p: RouteProfile, force = false): Promise<string> {
+  if (p === "trekking") return "trekking";
+  if (!force && uploaded[p]) return uploaded[p]!;
+  const j = JSON.parse(await postText(`${BROUTER}/profile`, profileText(p)));
+  if (!j.profileid) throw new Error(`Profil-Upload: ${j.error ?? "keine ID"}`);
+  uploaded[p] = j.profileid;
+  return j.profileid;
+}
 
 /** Fahrrad-Routing über den öffentlichen BRouter-Server (nur online, nur im Planungsmodus). */
-export async function brouterRoute(waypoints: LonLat[], profile = "trekking"): Promise<LonLat[]> {
+export async function brouterRoute(waypoints: LonLat[], profile: RouteProfile = "familie"): Promise<LonLat[]> {
   if (waypoints.length < 2) throw new Error("Mindestens Start und Ziel nötig");
   const lonlats = waypoints.map((p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`).join("|");
-  const url = `https://brouter.de/brouter?lonlats=${encodeURIComponent(lonlats)}&profile=${profile}&alternativeidx=0&format=geojson`;
-  const gj = await getJson(url);
+  const url = (id: string) => `${BROUTER}?lonlats=${encodeURIComponent(lonlats)}&profile=${id}&alternativeidx=0&format=geojson`;
+  let gj: any;
+  try {
+    gj = await getJson(url(await profileId(profile)));
+  } catch (e) {
+    // Hochgeladene Profile löscht der Server nach einiger Zeit: einmal neu hochladen
+    if (profile === "trekking") throw e;
+    gj = await getJson(url(await profileId(profile, true)));
+  }
   const coords: number[][] = gj.features?.[0]?.geometry?.coordinates;
   if (!coords?.length) throw new Error("Keine Route gefunden");
   return coords.map((c) => (c.length > 2 ? [c[0], c[1], c[2]] : [c[0], c[1]]) as LonLat);

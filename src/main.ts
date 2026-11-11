@@ -7,7 +7,8 @@ import { Share } from "@capacitor/share";
 import { bboxOf, cumulativeKm, haversineKm, projectOnLine, type LonLat } from "./geo";
 import { CAT_INFO, EXTRA_LABELS, loadCamp, loadPois, poisAlongRoute, type Cat, type Poi, type PoiIndex, type RoutePoi } from "./pois";
 import { alternativesNear, planStages, toDayPlan, type DayPlan, type Stage } from "./stages";
-import { brouterRoute, parseGpx, toGpx } from "./route";
+import { brouterRoute, parseGpx, PROFILE_INFO, toGpx, type RouteProfile } from "./route";
+import { appendPoint, assemble, fromPlan, insertPoint, markRoutedDirty, movePoint, pendingLegs, removePoint, type Editable } from "./legs";
 import { feasibleKm, headwind, smhiFireRisk, smhiForecast, windDirName, type WeatherHour } from "./weather";
 import { compareRegions, REGIONS, type Region } from "./regions";
 import { BLANK_STYLE, createMap, offlineStyle, ONLINE_STYLE, type MapView, type SatOptions } from "./map";
@@ -54,6 +55,8 @@ const S = {
   eigRadius: 500,
   check: null as null | { center: LonLat; token: number },
   sync: { cfg: null as SyncConfig | null, last: "", error: "", dirty: false, busy: false },
+  cycle: false,
+  routing: "",
 };
 
 let mv: MapView;
@@ -119,7 +122,7 @@ function pickFile(accept: string): Promise<string | null> {
 async function importGpxText(text: string) {
   try {
     const { name, line } = parseGpx(text);
-    S.plan = { ...S.plan, name, line, waypoints: [line[0], line[line.length - 1]], pinned: [], done: [] };
+    S.plan = { ...S.plan, name, line, waypoints: [line[0], line[line.length - 1]], cuts: [0, line.length - 1], legFixed: [true], pinned: [], done: [] };
     await savePlan(S.plan);
     recompute();
     mv.fit(bboxOf(line));
@@ -194,7 +197,7 @@ function mapCats(): Set<Cat> {
 function updateMap() {
   if (!mv) return;
   mv.setRoute(S.plan.line);
-  mv.setWaypoints(S.tab === "planen" ? S.plan.waypoints : []);
+  mv.setWaypoints(S.tab === "planen" ? S.plan.waypoints : [], S.tab === "planen");
   mv.setStages(S.days.filter((d) => d.stage).map((d) => d.stage!));
   const pois = S.plan.line.length > 1 && !S.showAllPois ? S.routePois.map((r) => r.poi) : S.index?.all ?? [];
   mv.setPois(pois, mapCats());
@@ -352,7 +355,8 @@ function renderPlanen(): string {
 
   if (!S.index) html += `<div class="card muted">${esc(S.busy || "Lade Ortsdaten …")}</div>`;
 
-  html += `<h2>Kartenebenen</h2>${catChips(S.visible, Object.keys(CAT_INFO) as Cat[], "layer")}`;
+  html += `<h2>Kartenebenen</h2>${catChips(S.visible, Object.keys(CAT_INFO) as Cat[], "layer")}
+    <div class="chips"><button class="chip ${S.cycle ? "on" : ""}" id="cycleLayer">🚲 Offizielle Radrouten${S.online ? "" : " (nur online)"}</button></div>`;
 
   if (!hasRoute) {
     html += `<h2>1. Region wählen</h2>
@@ -374,15 +378,19 @@ function renderPlanen(): string {
   html += `<h2>${hasRoute ? "Route" : "2. Route erstellen"}</h2><div class="card">
     <div class="row">
       <button class="btn ${S.addMode ? "on" : "secondary"}" id="addMode">${S.addMode ? "Punkte setzen: an" : "📍 Punkte auf Karte setzen"}</button>
-      <button class="btn" id="calcRoute" ${p.waypoints.length < 2 ? "disabled" : ""}>Route berechnen</button>
+      <button class="btn" id="calcRoute" ${p.waypoints.length < 2 || S.routing ? "disabled" : ""}>${S.routing ? esc(S.routing) : hasRoute ? "Neu berechnen" : "Route berechnen"}</button>
       <button class="btn secondary" id="importGpx">GPX importieren</button>
     </div>
+    <div class="row" style="margin-top:6px"><label>Routenprofil <select id="profile">${(Object.keys(PROFILE_INFO) as RouteProfile[])
+      .map((k) => `<option value="${k}" ${(p.profile ?? "familie") === k ? "selected" : ""}>${esc(PROFILE_INFO[k].label)}</option>`)
+      .join("")}</select></label></div>
+    <p class="muted" style="margin:4px 0">${esc(PROFILE_INFO[p.profile ?? "familie"].hint)}.${hasRoute ? " Auf der Karte: Punkte ziehen zum Verschieben, die Linie anfassen und ziehen für einen neuen Zwischenpunkt, Punkt antippen zum Löschen. Neu berechnet wird nur das geänderte Stück; Strecken aus einer GPX-Datei bleiben sonst unverändert." : ""}</p>
     ${
       p.waypoints.length
         ? `<div style="margin-top:8px">${p.waypoints
             .map((w, i) => `<div class="row between list-item"><span>${i === 0 ? "Start" : i === p.waypoints.length - 1 ? "Ziel" : `Zwischenpunkt ${i}`} <span class="muted">${w[1].toFixed(3)}, ${w[0].toFixed(3)}</span></span><button class="btn small danger" data-delwp="${i}">✕</button></div>`)
             .join("")}</div>`
-        : `<p class="muted">Tippe „Punkte auf Karte setzen“ und dann Start, Zwischenpunkte und Ziel auf die Karte. Das Fahrrad-Routing (BRouter) braucht Internet.</p>`
+        : `<p class="muted">Tippe „Punkte auf Karte setzen“ und dann Start, Zwischenpunkte und Ziel auf die Karte. Die Route wird sofort berechnet. Das Fahrrad-Routing (BRouter) braucht Internet.</p>`
     }
     ${hasRoute ? `<p><b>${esc(p.name)}</b>: ${km(total)} · ${S.routePois.length} Orte im 3-km-Korridor</p>
       <div class="row"><button class="btn small secondary" id="toggleAll">${S.showAllPois ? "Nur Orte an der Route" : "Alle Orte zeigen"}</button>
@@ -398,6 +406,8 @@ function renderPlanen(): string {
       <div class="row" style="margin-top:6px"><label>km/Tag <input type="number" id="sMin" value="${st.minKm}"> – <input type="number" id="sMax" value="${st.maxKm}"></label>
       <label>Ziel <input type="number" id="sTarget" value="${st.targetKm}"></label>
       <label>Ruhetag nach <input type="number" id="sRest" min="0" max="10" value="${st.restAfter}"> Tagen</label></div>
+      <div class="row" style="margin-top:6px"><label>Warnen ab <input type="number" id="sMaxUp" min="50" step="50" value="${st.maxUp}"> Hm/Tag</label>
+      <label>und ab <input type="number" id="sSteep" min="2" max="20" value="${st.steepPct}"> % Steigung</label></div>
       <p>${rideDays} Fahrtage + ${allDays - rideDays} Ruhetage = <b class="${over ? "warn" : ""}">${allDays} Tage</b> von ${st.days}.
       ${over ? `<span class="warn">Die Route ist für ${st.days} Tage zu lang: kürzen oder ein Stück mit dem Zug fahren.</span>` : `${st.days - allDays} Puffertage übrig.`}</p>
       <p class="muted">Höhenmeter zählen mit: ${st.hmPerKm} Hm ≈ 1 km mehr. ${p.pinned.length ? `${p.pinned.length} Schlafplatz/-plätze von Hand fixiert. <button class="btn small secondary" id="unpin">Zurücksetzen</button>` : ""}</p>
@@ -410,6 +420,32 @@ function renderPlanen(): string {
   return html;
 }
 
+/** Kleines Höhenprofil der Etappe; steile Stellen rot. */
+function elevationSvg(s: Stage): string {
+  const line = S.plan.line, cum = S.cum;
+  if (line.length < 2 || line[0][2] === undefined) return "";
+  const N = 120, W = 300, H = 44;
+  const pts: [number, number][] = [];
+  let j = 0;
+  for (let k = 0; k <= N; k++) {
+    const kmAt = s.fromKm + ((s.toKm - s.fromKm) * k) / N;
+    while (j < cum.length - 1 && cum[j] < kmAt) j++;
+    const e = line[j][2];
+    if (e !== undefined) pts.push([kmAt, e]);
+  }
+  if (pts.length < 2) return "";
+  const lo = Math.min(...pts.map((p) => p[1])), hi = Math.max(...pts.map((p) => p[1]), lo + 30);
+  const X = (km: number) => ((km - s.fromKm) / Math.max(0.01, s.toKm - s.fromKm)) * W;
+  const Y = (e: number) => H - 2 - ((e - lo) / (hi - lo)) * (H - 6);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("");
+  const red = s.steep
+    .map((x) => `<rect x="${X(Math.max(x.fromKm, s.fromKm)).toFixed(1)}" y="0" width="${Math.max(2, X(Math.min(x.toKm, s.toKm)) - X(Math.max(x.fromKm, s.fromKm))).toFixed(1)}" height="${H}" fill="#d32f2f" opacity=".25"/>`)
+    .join("");
+  return `<svg class="elev" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-label="Höhenprofil ${Math.round(lo)} bis ${Math.round(hi)} m">${red}
+    <path d="${path}L${W},${H}L0,${H}Z" fill="#c5e1a5"/><path d="${path}" fill="none" stroke="#558b2f" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+    <div class="muted" style="font-size:12px">Höhe ${Math.round(lo)}–${Math.round(hi)} m${s.steep.length ? ` · <span class="warn">rot: steiler als ${S.plan.settings.steepPct} %</span>` : ""}</div>`;
+}
+
 function dayCard(d: DayPlan): string {
   const date = fmtDate(dateOfDay(d.day));
   if (d.type === "rest") return `<div class="card day rest"><b>Tag ${d.day}</b> <span class="muted">${date}</span> · Ruhetag 🏖️</div>`;
@@ -420,6 +456,7 @@ function dayCard(d: DayPlan): string {
     <div class="muted">↗ ${s.up} Hm ↘ ${s.down} Hm · km ${Math.round(s.fromKm)}–${Math.round(s.toKm)}</div>
     <div>🌙 ${s.end ? `${CAT_INFO[s.end.cat].icon} ${esc(poiName(s.end))}${s.endOffKm > 0.3 ? ` <span class="muted">(${km(s.endOffKm, 1)} abseits)</span>` : ""}` : "Ziel"}</div>
     ${s.lunch ? `<div>🍽️ Mittag: 🏊 ${esc(poiName(s.lunch))}</div>` : ""}
+    ${elevationSvg(s)}
     ${s.warnings.map((w) => `<div class="warn">⚠ ${esc(w)}</div>`).join("")}
     <div class="row" style="margin-top:6px"><button class="btn small secondary" data-zoom="${s.day}">Zeigen</button>
     ${s.end ? `<button class="btn small secondary" data-move="${s.day}">Schlafplatz ändern</button>` : ""}</div>
@@ -440,26 +477,35 @@ function bindPlanen() {
   });
   panel().querySelectorAll<HTMLElement>("[data-delwp]").forEach((b) =>
     b.addEventListener("click", () => {
-      S.plan.waypoints.splice(Number(b.dataset.delwp), 1);
-      savePlan(S.plan);
-      updateMap();
-      render();
+      applyEdit(removePoint(currentEdit(), Number(b.dataset.delwp)));
     }),
   );
   $("#calcRoute")?.addEventListener("click", calcRoute);
+  $("#profile")?.addEventListener("change", async (ev) => {
+    S.plan.profile = (ev.target as HTMLSelectElement).value as RouteProfile;
+    await savePlan(S.plan);
+    if (S.plan.waypoints.length >= 2) await calcRoute();
+    else render();
+  });
+  $("#cycleLayer")?.addEventListener("click", async () => {
+    S.cycle = !S.cycle;
+    mv.setCycleRoutes(S.cycle);
+    await save("cycleLayer", S.cycle);
+    render();
+  });
   $("#importGpx")?.addEventListener("click", async () => {
     const text = await pickFile(".gpx,application/gpx+xml,application/xml,text/xml,*/*");
     if (text) await importGpxText(text);
   });
   $("#toggleAll")?.addEventListener("click", () => { S.showAllPois = !S.showAllPois; updateMap(); render(); });
   $("#resetRoute")?.addEventListener("click", async () => {
-    S.plan = { ...S.plan, line: [], waypoints: [], pinned: [], done: [] };
+    S.plan = { ...S.plan, line: [], waypoints: [], cuts: undefined, legFixed: undefined, pinned: [], done: [] };
     await savePlan(S.plan);
     recompute();
     render();
   });
   const num = (id: string) => Number(($(`#${id}`) as HTMLInputElement).value);
-  ["sDays", "sMin", "sMax", "sTarget", "sRest"].forEach((id) =>
+  ["sDays", "sMin", "sMax", "sTarget", "sRest", "sMaxUp", "sSteep"].forEach((id) =>
     $(`#${id}`)?.addEventListener("change", async () => {
       const st = S.plan.settings;
       st.days = num("sDays") || st.days;
@@ -467,6 +513,8 @@ function bindPlanen() {
       st.maxKm = Math.max(st.minKm, num("sMax") || st.maxKm);
       st.targetKm = Math.min(st.maxKm, Math.max(st.minKm, num("sTarget") || st.targetKm));
       st.restAfter = Math.max(0, num("sRest"));
+      st.maxUp = Math.max(50, num("sMaxUp") || st.maxUp);
+      st.steepPct = Math.min(20, Math.max(2, num("sSteep") || st.steepPct));
       await savePlan(S.plan);
       recompute();
       render();
@@ -503,30 +551,56 @@ function zoomStage(s: Stage) {
   mv.fit(bboxOf(S.plan.line.slice(Math.max(0, i0), i1 + 1)));
 }
 
+// ---------- Route bearbeiten (wie Komoot: ziehen, einfügen, löschen) ----------
+const currentEdit = (): Editable => fromPlan(S.plan.waypoints, S.plan.line, S.plan.cuts, S.plan.legFixed);
+
+/**
+ * Übernimmt eine Änderung: berechnet nur die betroffenen Abschnitte neu (abschnittsweise,
+ * damit lange Touren nicht am Server-Zeitlimit scheitern) und speichert. Bei Fehlern bleibt
+ * die alte Route.
+ */
+async function applyEdit(e: Editable, opts: { fit?: boolean } = {}) {
+  if (S.routing) { toast("Route wird noch berechnet …"); updateMap(); return; }
+  const pend = pendingLegs(e);
+  const profile = S.plan.profile ?? "familie";
+  try {
+    for (let k = 0; k < pend.length; k++) {
+      const i = pend[k];
+      S.routing = pend.length > 1 ? `Berechne Abschnitt ${k + 1}/${pend.length} …` : "Berechne …";
+      if (S.tab === "planen") render();
+      e.legs[i].line = await brouterRoute([e.waypoints[i], e.waypoints[i + 1]], profile);
+    }
+  } catch (err) {
+    S.routing = "";
+    toast(`Routing fehlgeschlagen: ${(err as Error).message}. Internet da?`, 4000);
+    updateMap();
+    render();
+    return;
+  }
+  S.routing = "";
+  const { line, cuts, fixed } = assemble(e);
+  S.plan = { ...S.plan, waypoints: e.waypoints, line: e.legs.length ? line : [], cuts, legFixed: fixed };
+  await savePlan(S.plan);
+  recompute();
+  if (opts.fit && line.length > 1) mv.fit(bboxOf(line));
+  render();
+}
+
+/** „Neu berechnen“: alle gerouteten Abschnitte mit dem aktuellen Profil (feste GPX-Stücke bleiben). */
 async function calcRoute() {
   if (S.plan.waypoints.length < 2) return;
-  const btn = $("#calcRoute") as HTMLButtonElement;
-  btn.disabled = true;
-  btn.textContent = "Berechne …";
-  try {
-    // Abschnittsweise, damit lange Touren nicht am Server-Zeitlimit scheitern
-    const wps = S.plan.waypoints;
-    const line: LonLat[] = [];
-    for (let i = 0; i < wps.length - 1; i++) {
-      btn.textContent = `Berechne ${i + 1}/${wps.length - 1} …`;
-      const part = await brouterRoute([wps[i], wps[i + 1]]);
-      line.push(...(i === 0 ? part : part.slice(1)));
-    }
-    S.plan = { ...S.plan, line, pinned: [], done: [] };
-    await savePlan(S.plan);
-    S.addMode = false;
-    recompute();
-    mv.fit(bboxOf(line));
-    render();
-  } catch (e) {
-    toast(`Routing fehlgeschlagen: ${(e as Error).message}. Internet da?`, 4000);
-    render();
-  }
+  S.addMode = false;
+  await applyEdit(markRoutedDirty(currentEdit()), { fit: true });
+}
+
+function waypointMenu(i: number) {
+  const n = S.plan.waypoints.length;
+  const name = i === 0 ? "Start" : i === n - 1 ? "Ziel" : `Zwischenpunkt ${i}`;
+  openSheet(
+    `<h3>${name}</h3><p class="muted">Ziehen verschiebt den Punkt, die Route wird dann neu berechnet.</p>
+    <div class="row"><button class="btn danger" id="wpDel">Punkt löschen</button></div>`,
+    (el) => el.querySelector("#wpDel")!.addEventListener("click", () => { closeSheet(); applyEdit(removePoint(currentEdit(), i)); }),
+  );
 }
 
 function moveStageEnd(day: number) {
@@ -1307,6 +1381,7 @@ async function init() {
   S.esriKey = await load("esriKey", "");
   S.eigRadius = await load("eignungRadius", 500);
   const wantSat = await load("sat", false);
+  S.cycle = await load("cycleLayer", false);
   const vis = await load<Cat[] | null>("visibleCats", null);
   if (vis) S.visible = new Set(vis.includes("camping") && !vis.includes("lager") ? [...vis, "lager"] : vis);
   const nc = await load<Cat[] | null>("nextCats", null);
@@ -1318,11 +1393,11 @@ async function init() {
   mv.onPoiClick(showPoi);
   mv.map.on("click", (e) => {
     if (!S.addMode || S.tab !== "planen") return;
-    S.plan.waypoints.push([e.lngLat.lng, e.lngLat.lat]);
-    savePlan(S.plan);
-    updateMap();
-    render();
+    applyEdit(appendPoint(currentEdit(), [e.lngLat.lng, e.lngLat.lat]));
   });
+  mv.onWaypointDrag((i, p) => applyEdit(movePoint(currentEdit(), i, p)));
+  mv.onWaypointClick((i) => waypointMenu(i));
+  mv.onRouteDrag((at, to) => applyEdit(insertPoint(currentEdit(), at, to)));
   mv.map.on("style.load", updateMap);
   mv.onPick((p) => checkPoint(p));
   $("#btnPick").addEventListener("click", () => setPickMode(!S.pickMode));
@@ -1336,6 +1411,7 @@ async function init() {
   loadTestRegions();
   await chooseMapStyle();
   if (wantSat) await setSat(true);
+  if (S.cycle) mv.setCycleRoutes(true);
   window.addEventListener("online", async () => { S.online = await isOnline(); chooseMapStyle(); refreshWeather(); render(); });
   window.addEventListener("offline", () => { S.online = false; chooseMapStyle(); render(); });
 

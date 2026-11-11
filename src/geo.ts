@@ -121,3 +121,49 @@ export function bboxOf(line: LonLat[]): [number, number, number, number] {
   }
   return [w, s, e, n];
 }
+
+export interface SteepSection {
+  fromKm: number;
+  toKm: number;
+  /** Höchste mittlere Steigung über das Messfenster in % */
+  maxPct: number;
+  /** Höhengewinn im Abschnitt in m */
+  gainM: number;
+}
+
+/**
+ * Steile Anstiege: Stellen, an denen die Steigung über ein Fenster von `windowM` Metern
+ * mindestens `pct` Prozent beträgt (das Fenster glättet Höhenrauschen). Aneinandergrenzende
+ * Stellen werden zusammengefasst.
+ */
+export function steepSections(line: LonLat[], cum: number[], pct = 6, windowM = 150): SteepSection[] {
+  const out: SteepSection[] = [];
+  const w = windowM / 1000;
+  let j = 0;
+  let cur: SteepSection | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const ei = line[i][2];
+    if (ei === undefined || Number.isNaN(ei)) continue;
+    if (j < i) j = i;
+    while (j < line.length - 1 && cum[j] - cum[i] < w) j++;
+    const d = cum[j] - cum[i];
+    const ej = line[j][2];
+    if (d < w * 0.8 || ej === undefined || Number.isNaN(ej)) continue;
+    const g = ((ej - ei) / (d * 1000)) * 100;
+    if (g >= pct) {
+      if (cur && cum[i] <= cur.toKm + 0.05) {
+        cur.toKm = Math.max(cur.toKm, cum[j]);
+        cur.maxPct = Math.max(cur.maxPct, g);
+      } else {
+        cur = { fromKm: cum[i], toKm: cum[j], maxPct: g, gainM: 0 };
+        out.push(cur);
+      }
+    }
+  }
+  for (const s of out) {
+    const a = indexAtKm(cum, s.fromKm), b = indexAtKm(cum, s.toKm);
+    s.gainM = Math.max(0, Math.round((line[b][2] ?? 0) - (line[a][2] ?? 0)));
+    s.maxPct = Math.round(s.maxPct * 10) / 10;
+  }
+  return out;
+}

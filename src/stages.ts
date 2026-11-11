@@ -1,4 +1,4 @@
-import { climb, indexAtKm, type LonLat } from "./geo";
+import { climb, indexAtKm, steepSections, type LonLat, type SteepSection } from "./geo";
 import { CAT_INFO, type Poi, type RoutePoi } from "./pois";
 
 export interface StageSettings {
@@ -13,6 +13,10 @@ export interface StageSettings {
   hmPerKm: number;
   /** Maximaler Abstand eines Schlafplatzes von der Route in km */
   sleepCorridorKm: number;
+  /** Warnung ab so vielen Höhenmetern bergauf pro Etappe */
+  maxUp: number;
+  /** Warnung bei Anstiegen ab dieser Steigung in % */
+  steepPct: number;
 }
 
 export const DEFAULT_SETTINGS: StageSettings = {
@@ -23,6 +27,8 @@ export const DEFAULT_SETTINGS: StageSettings = {
   days: 21,
   hmPerKm: 50,
   sleepCorridorKm: 3,
+  maxUp: 400,
+  steepPct: 6,
 };
 
 export interface Stage {
@@ -37,6 +43,8 @@ export interface Stage {
   end: Poi | null;
   endOffKm: number;
   lunch: Poi | null;
+  /** Steile Anstiege in dieser Etappe (km ab Routenstart) */
+  steep: SteepSection[];
   warnings: string[];
 }
 
@@ -133,6 +141,7 @@ export function planStages(
   }
   path.reverse();
 
+  const allSteep = steepSections(line, cum, settings.steepPct ?? 6);
   const lunchCands = routePois.filter((r) => r.poi.cat === "badplats" && r.offKm <= 1.5);
   const stages: Stage[] = [];
   for (let s = 1; s < path.length; s++) {
@@ -151,11 +160,16 @@ export function planStages(
     }
     const warnings: string[] = [];
     if (effKm > S.maxKm) warnings.push(`Lang: ${Math.round(effKm)} km inkl. Höhenmeter`);
-    if (up > 400) warnings.push(`${up} Höhenmeter`);
+    const maxUp = S.maxUp ?? 400;
+    if (up > maxUp) warnings.push(`${up} Höhenmeter (mehr als ${maxUp})`);
+    const steep = allSteep.filter((x) => x.toKm > a.km && x.fromKm < b.km);
+    for (const x of steep.slice(0, 3))
+      warnings.push(`Steil bei km ${Math.round(x.fromKm - a.km)}: bis ${String(x.maxPct).replace(".", ",")} % auf ${Math.max(100, Math.round((x.toKm - x.fromKm) * 1000 / 50) * 50)} m (${x.gainM} Hm)`);
+    if (steep.length > 3) warnings.push(`… und ${steep.length - 3} weitere steile Stellen`);
     if (!b.poi && s < path.length - 1) warnings.push("Kein Schlafplatz gefunden");
     if (b.off > 1.5) warnings.push(`Schlafplatz ${b.off.toFixed(1)} km abseits`);
     stages.push({
-      day: s, fromKm: a.km, toKm: b.km, km, up, down, effKm, end: b.poi, endOffKm: b.off, lunch, warnings,
+      day: s, fromKm: a.km, toKm: b.km, km, up, down, effKm, end: b.poi, endOffKm: b.off, lunch, steep, warnings,
     });
   }
   return stages;

@@ -75,7 +75,15 @@ export interface MapView {
   map: MlMap;
   setStyle(style: string | StyleSpecification): void;
   setRoute(line: LonLat[]): void;
-  setWaypoints(pts: LonLat[]): void;
+  /** Wegpunkte; `editable` = als ziehbare Marker (Planen) */
+  setWaypoints(pts: LonLat[], editable?: boolean): void;
+  /** Wegpunkt i wurde auf p gezogen */
+  onWaypointDrag(cb: (i: number, p: LonLat) => void): void;
+  onWaypointClick(cb: (i: number) => void): void;
+  /** Route an Stelle `at` angefasst und nach `to` gezogen (neuer Zwischenpunkt) */
+  onRouteDrag(cb: (at: LonLat, to: LonLat) => void): void;
+  /** Offizielle Radrouten (Waymarked Trails, online) ein-/ausblenden */
+  setCycleRoutes(on: boolean): void;
   setStages(stages: Stage[], highlightDay?: number): void;
   setPois(pois: Poi[], visible: Set<Cat>): void;
   setVisibleCats(visible: Set<Cat>): void;
@@ -114,7 +122,13 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     pos: null as LonLat | null,
     sat: null as SatOptions | null,
     check: null as CheckOverlay | null,
+    editable: false,
+    cycle: false,
   };
+  let markers: maplibregl.Marker[] = [];
+  let wpDragCb: ((i: number, p: LonLat) => void) | null = null;
+  let wpClickCb: ((i: number) => void) | null = null;
+  let routeDragCb: ((at: LonLat, to: LonLat) => void) | null = null;
   let pickMode = false;
   let pickCb: ((p: LonLat) => void) | null = null;
   let poiCb: ((p: Poi) => void) | null = null;
@@ -179,7 +193,9 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
       paint: { "text-color": "#fff" },
     });
     applySat();
+    applyCycle();
     redraw();
+    drawMarkers();
   }
 
   function applySat() {
@@ -228,13 +244,48 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
       }))),
     );
     (map.getSource("waypoints") as GeoJSONSource).setData(
-      fc(state.waypoints.map((p) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [p[0], p[1]] } }))),
+      fc((state.editable ? [] : state.waypoints).map((p) => ({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [p[0], p[1]] } }))),
     );
     drawPois();
     drawCheck();
     (map.getSource("pos") as GeoJSONSource).setData(
       fc(state.pos ? [{ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [state.pos[0], state.pos[1]] } }] : []),
     );
+  }
+
+  function drawMarkers() {
+    markers.forEach((m) => m.remove());
+    markers = [];
+    if (!state.editable) return;
+    const n = state.waypoints.length;
+    state.waypoints.forEach((p, i) => {
+      const el = document.createElement("div");
+      const kind = i === 0 ? "start" : i === n - 1 && n > 1 ? "ziel" : "via";
+      el.className = `wp-marker ${kind}`;
+      el.textContent = kind === "start" ? "S" : kind === "ziel" ? "Z" : "";
+      el.title = "Ziehen zum Verschieben, Tippen für Optionen";
+      const m = new maplibregl.Marker({ element: el, draggable: true }).setLngLat([p[0], p[1]]).addTo(map);
+      let moved = false;
+      m.on("dragstart", () => { moved = true; });
+      m.on("dragend", () => {
+        const ll = m.getLngLat();
+        wpDragCb?.(i, [ll.lng, ll.lat]);
+        setTimeout(() => { moved = false; }, 50);
+      });
+      el.addEventListener("click", (ev) => { ev.stopPropagation(); if (!moved) wpClickCb?.(i); });
+      markers.push(m);
+    });
+  }
+
+  function applyCycle() {
+    if (map.getLayer("cycle")) map.removeLayer("cycle");
+    if (map.getSource("cycle")) map.removeSource("cycle");
+    if (!state.cycle || !map.getSource("route")) return;
+    map.addSource("cycle", {
+      type: "raster", tiles: ["https://tile.waymarkedtrails.org/cycling/{z}/{x}/{y}.png"], tileSize: 256, maxzoom: 17,
+      attribution: '<a href="https://cycling.waymarkedtrails.org">Waymarked Trails</a> (CC BY-SA)',
+    });
+    map.addLayer({ id: "cycle", type: "raster", source: "cycle", paint: { "raster-opacity": 0.85 } }, "route-casing");
   }
 
   function endOf(s: Stage): [number, number] {
@@ -290,6 +341,50 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     pick(e);
   });
   map.on("contextmenu", (e: any) => pick(e));
+  // Route anfassen und ziehen = neuer Zwischenpunkt (nur Planen, wie bei Komoot)
+  let ghost: maplibregl.Marker | null = null;
+  let dragStart: { at: LonLat; x: number; y: number } | null = null;
+  const startRouteDrag = (e: any) => {
+    if (!state.editable || !routeDragCb || pickMode || state.route.length < 2) return;
+    if (e.originalEvent?.touches && e.originalEvent.touches.length > 1) return;
+    // Gesten auf einem Wegpunkt-Marker gehören dem Marker (verschieben), nicht der Linie
+    if ((e.originalEvent?.target as HTMLElement | undefined)?.closest?.(".maplibregl-marker")) return;
+    const { x, y } = e.point;
+    if (!map.getLayer("route")) return;
+    const hits = map.queryRenderedFeatures([[x - 14, y - 14], [x + 14, y + 14]], { layers: ["route"] });
+    if (!hits.length) return;
+    e.preventDefault(); // Karte nicht verschieben
+    dragStart = { at: [e.lngLat.lng, e.lngLat.lat], x, y };
+  };
+  const moveRouteDrag = (e: any) => {
+    if (!dragStart) return;
+    const { x, y } = e.point;
+    if (!ghost && Math.hypot(x - dragStart.x, y - dragStart.y) < 8) return;
+    if (!ghost) {
+      const el = document.createElement("div");
+      el.className = "wp-marker via ghost";
+      ghost = new maplibregl.Marker({ element: el }).setLngLat(e.lngLat).addTo(map);
+    }
+    ghost.setLngLat(e.lngLat);
+  };
+  const endRouteDrag = () => {
+    if (!dragStart) return;
+    const start = dragStart;
+    dragStart = null;
+    if (ghost) {
+      const ll = ghost.getLngLat();
+      ghost.remove();
+      ghost = null;
+      routeDragCb?.(start.at, [ll.lng, ll.lat]);
+    }
+  };
+  map.on("mousedown", startRouteDrag);
+  map.on("touchstart", startRouteDrag);
+  map.on("mousemove", moveRouteDrag);
+  map.on("touchmove", moveRouteDrag);
+  map.on("mouseup", endRouteDrag);
+  map.on("touchend", endRouteDrag);
+  map.on("touchcancel", () => { dragStart = null; ghost?.remove(); ghost = null; });
   map.on("mouseenter", "pois", () => (map.getCanvas().style.cursor = "pointer"));
   map.on("mouseleave", "pois", () => (map.getCanvas().style.cursor = ""));
 
@@ -297,7 +392,16 @@ export function createMap(container: HTMLElement, style: string | StyleSpecifica
     map,
     setStyle(style) { map.setStyle(style); },
     setRoute(line) { state.route = line; redraw(); },
-    setWaypoints(pts) { state.waypoints = pts; redraw(); },
+    setWaypoints(pts, editable = false) {
+      const same = editable === state.editable && pts.length === state.waypoints.length && pts.every((p, i) => p[0] === state.waypoints[i][0] && p[1] === state.waypoints[i][1]);
+      state.waypoints = pts; state.editable = editable;
+      redraw();
+      if (!same) drawMarkers();
+    },
+    onWaypointDrag(cb) { wpDragCb = cb; },
+    onWaypointClick(cb) { wpClickCb = cb; },
+    onRouteDrag(cb) { routeDragCb = cb; },
+    setCycleRoutes(on) { state.cycle = on; applyCycle(); },
     setStages(stages, hl) { state.stages = stages; state.highlight = hl; redraw(); },
     setPois(pois, visible) {
       state.pois = pois; state.visible = visible;
