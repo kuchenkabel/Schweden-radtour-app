@@ -5,7 +5,7 @@ import { Geolocation } from "@capacitor/geolocation";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Share } from "@capacitor/share";
 import { bboxOf, climb, cumulativeKm, haversineKm, indexAtKm, projectOnLine, type LonLat } from "./geo";
-import { CAT_INFO, EXTRA_LABELS, loadCamp, loadPois, poisAlongRoute, type Cat, type Poi, type PoiIndex, type RoutePoi } from "./pois";
+import { CAT_INFO, EXTRA_LABELS, loadCamp, loadPois, poisAlongRoute, tentInfo, type Cat, type Poi, type PoiIndex, type RoutePoi } from "./pois";
 import { budgetFor, rankSleep, sleepExtra, waterLabel, type Candidate } from "./sleep";
 import { alternativesNear, planStages, toDayPlan, type DayPlan, type Stage } from "./stages";
 import { brouterRoute, parseGpx, PROFILE_INFO, toGpx, type RouteProfile } from "./route";
@@ -921,6 +921,10 @@ function showPoi(p: Poi) {
     .join("");
   const dist = S.pos ? ` · ${km(haversineKm(S.pos, [p.lon, p.lat]), 1)} Luftlinie` : "";
   let camp = "";
+  const tent = tentInfo(p);
+  if (tent === "nein") camp = `<p class="warn"><b>⛺ Zelte laut Karte nicht erlaubt</b> (Wohnmobil-/Wohnwagenplatz). Wird nicht als Schlafplatz eingeplant.</p>`;
+  else if (tent === "unbekannt") camp = `<p class="muted">⛺ Ob Zelte erlaubt sind, ist nicht eingetragen. Meist ja – vor einem Ruhetag besser anfragen.</p>`;
+  else if (tent === "ja" && p.cat === "camping") camp = `<p>⛺ Zelte erlaubt</p>`;
   if (p.cat === "zeltplatz") {
     const sc = Number(p.x.sc);
     const wiese = p.x.gr?.startsWith("Wiese");

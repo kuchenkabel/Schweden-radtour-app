@@ -59,3 +59,29 @@ describe("planStages", () => {
     expect(days[4].type).toBe("rest");
   });
 });
+
+describe("Zelt-Erlaubnis", () => {
+  const cats = ["camping", "vindskydd", "badplats"];
+  const line2 = line;
+  const mk = (pts: [number, string | undefined][]) =>
+    new PoiIndex({
+      cats,
+      pois: pts.map(([km, tent], i) => [0, Math.round((55.5 + km / 111) * 1e5), 1300100, `C${i}@${km}`, tent ? { tent } : {}]),
+    });
+
+  it("Plätze mit tents=no werden nie Etappenende", () => {
+    const pts: [number, string | undefined][] = [];
+    for (let km = 10; km < 300; km += 7) pts.push([km, km % 2 ? "no" : "yes"]);
+    const idx = mk(pts);
+    const stages = planStages(line2, cum, poisAlongRoute(idx, line2, 2, cum));
+    for (const s of stages.slice(0, -1)) expect(s.end?.x.tent).toBe("yes");
+  });
+
+  it("Ruhetag auf Platz ohne Angabe bekommt Hinweis", () => {
+    const end = { id: 1, cat: "camping", lon: 0, lat: 0, name: "X", x: {} } as any;
+    const st = Array.from({ length: 5 }, (_, i) => ({ day: i + 1, end, warnings: [] }) as any);
+    const days = toDayPlan(st, 2);
+    const w = days.find((d) => d.type === "ride" && d.stage!.day === 2)!.stage!.warnings;
+    expect(w.some((x) => x.includes("anfragen"))).toBe(true);
+  });
+});

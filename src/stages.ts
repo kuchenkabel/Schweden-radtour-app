@@ -1,5 +1,5 @@
 import { climb, indexAtKm, steepSections, type LonLat, type SteepSection } from "./geo";
-import { CAT_INFO, type Poi, type RoutePoi } from "./pois";
+import { CAT_INFO, isSleepSpot, tentInfo, type Poi, type RoutePoi } from "./pois";
 
 export interface StageSettings {
   minKm: number;
@@ -74,8 +74,9 @@ export function planStages(
 ): Stage[] {
   const total = cum[cum.length - 1];
   if (!(total > 0)) return [];
+  const pinnedIds = new Set(pinned);
   const sleepers = routePois.filter(
-    (r) => CAT_INFO[r.poi.cat].sleep && r.offKm <= settings.sleepCorridorKm && r.alongKm > 1 && r.alongKm < total - 1,
+    (r) => (isSleepSpot(r.poi) || pinnedIds.has(r.poi.id)) && r.offKm <= settings.sleepCorridorKm && r.alongKm > 1 && r.alongKm < total - 1,
   );
   const nodes: Node[] = [{ km: 0, poi: null, off: 0 }];
   for (const r of sleepers) nodes.push({ km: r.alongKm, poi: r.poi, off: r.offKm });
@@ -181,9 +182,10 @@ export function toDayPlan(stages: Stage[], restAfter: number): DayPlan[] {
   let day = 1, ridden = 0;
   stages.forEach((stage, i) => {
     const restNext = restAfter > 0 && ridden + 1 === restAfter && i < stages.length - 1;
-    const warnings = restNext && stage.end && !REST_OK.has(stage.end.cat)
-      ? [...stage.warnings, "Ruhetag folgt: besser ein Campingplatz mit Duschen und Waschmaschine"]
-      : stage.warnings;
+    const warnings = [...(stage.warnings ?? [])];
+    if (restNext && stage.end && !REST_OK.has(stage.end.cat)) warnings.push("Ruhetag folgt: besser ein Campingplatz mit Duschen und Waschmaschine");
+    if (stage.end && tentInfo(stage.end) === "nein") warnings.push("Campingplatz erlaubt laut Karte keine Zelte (nur Wohnmobile) – anderen Platz wählen");
+    else if (restNext && stage.end && tentInfo(stage.end) === "unbekannt") warnings.push("Ruhetag: Ob Zelte erlaubt sind, ist nicht eingetragen – vorher beim Campingplatz anfragen");
     out.push({ type: "ride", stage: { ...stage, day, warnings }, day });
     day++;
     ridden++;
@@ -199,6 +201,6 @@ export function toDayPlan(stages: Stage[], restAfter: number): DayPlan[] {
 /** Alternative Schlafplätze rund um ein Etappenende (für manuelles Verschieben). */
 export function alternativesNear(routePois: RoutePoi[], km: number, rangeKm = 12, corridorKm = 3): RoutePoi[] {
   return routePois
-    .filter((r) => CAT_INFO[r.poi.cat].sleep && r.offKm <= corridorKm && Math.abs(r.alongKm - km) <= rangeKm)
+    .filter((r) => isSleepSpot(r.poi) && r.offKm <= corridorKm && Math.abs(r.alongKm - km) <= rangeKm)
     .sort((a, b) => Math.abs(a.alongKm - km) - Math.abs(b.alongKm - km));
 }

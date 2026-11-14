@@ -2,7 +2,7 @@
  * Schlafplatz-Bewertung: Wassernähe (Badestelle/See) und Vorschläge für „heute Nacht“
  * nach Uhrzeit, bereits gefahrenen Kilometern und Ermüdung.
  */
-import { CAT_INFO, type Poi, type PoiIndex } from "./pois";
+import { CAT_INFO, isSleepSpot, tentInfo, type Poi, type PoiIndex } from "./pois";
 import type { StageSettings } from "./stages";
 
 /** Bevorzugung je Schlafplatz-Typ (kleiner = besser). */
@@ -40,6 +40,8 @@ export function waterPenalty(p: Poi, index: PoiIndex | null): number {
 
 /** Zuschlag/Bonus für Zeltplatz-Kandidaten nach Score (schöne, ruhige Stellen zuerst). */
 export function qualityPenalty(p: Poi): number {
+  // Campingplatz mit bestätigter Zelt-Erlaubnis bevorzugen
+  if (tentInfo(p) === "unbekannt") return 1;
   if (p.cat !== "zeltplatz") return 0;
   const sc = Number(p.x.sc) || 60;
   return -Math.max(0, Math.min(2, (sc - 60) / 10));
@@ -115,7 +117,7 @@ export interface Suggestion extends Candidate {
 export function rankSleep(cands: Candidate[], b: Budget, index: PoiIndex | null, hmPerKm: number, max = 5): Suggestion[] {
   const out: Suggestion[] = [];
   for (const c of cands) {
-    if (!CAT_INFO[c.poi.cat].sleep || c.distKm < 0.2) continue;
+    if (!isSleepSpot(c.poi) || c.distKm < 0.2) continue;
     const effKm = c.distKm + c.up / hmPerKm;
     if (effKm > b.limitKm + 8) continue;
     let score = ((effKm - b.idealKm) / 5) ** 2;

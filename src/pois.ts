@@ -14,6 +14,21 @@ export interface Poi {
   x: Record<string, string>;
 }
 
+/**
+ * Darf man hier zelten? Nur für Campingplätze und einfache Zeltplätze relevant (sonst null).
+ * Quelle: OSM-Tag tents (yes/no/only/Anzahl). Reine Wohnmobilplätze haben tents=no.
+ */
+export function tentInfo(p: Poi): "ja" | "nein" | "unbekannt" | null {
+  if (p.cat !== "camping" && p.cat !== "lager") return null;
+  const t = String(p.x?.tent ?? "").trim().toLowerCase();
+  if (t === "no" || t === "0") return "nein";
+  if (t === "yes" || t === "only" || /^[1-9]\d*$/.test(t)) return "ja";
+  return p.cat === "lager" ? "ja" : "unbekannt"; // einfacher Zeltplatz ist per Definition zum Zelten
+}
+
+/** Taugt als Schlafplatz für eine Familie mit Zelt (Wohnmobil-only-Plätze fallen raus). */
+export const isSleepSpot = (p: Poi) => !!CAT_INFO[p.cat].sleep && tentInfo(p) !== "nein";
+
 export const CAT_INFO: Record<Cat, { label: string; icon: string; color: string; sleep?: boolean }> = {
   vindskydd: { label: "Vindskydd", icon: "⛺", color: "#2e7d32", sleep: true },
   huette: { label: "Hütte", icon: "🛖", color: "#558b2f", sleep: true },
