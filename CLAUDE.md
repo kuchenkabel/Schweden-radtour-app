@@ -15,6 +15,7 @@ UI text, docs, commit messages and PR descriptions are **German**.
 ```bash
 npm ci
 npm run fetch-data      # POIs + Zeltplatz-Daten (Release data-latest) und Kartenschriften nach public/
+SKIP_POIS=1 npm run fetch-data   # nur Schriften
 npm run dev             # Vite dev server (Browser)
 npm run build           # tsc -p . && vite build -> dist/
 npm test                # vitest run (alle Tests)
@@ -28,8 +29,9 @@ There is no linter; `tsc` (strict, via `npm run build`) is the type check. The A
 ## Release flow
 
 Work on a branch, open a PR, merge to `main`. A merge to `main` triggers:
-- `apk.yml` → signed APK in release `apk-latest` (fails if not signed with the fixed release key, see `docs/SIGNIEREN.md`), then `smoketest.yml` runs it in an emulator
-- `web.yml` → build, copy `eignung-*.bin` from `data-latest` into `dist/data/eignung/`, Playwright browser test, deploy to Pages (PRs run build+test only)
+- `web.yml` → build, copy `eignung-*.bin` from `data-latest` into `dist/data/eignung/`, Playwright browser test, deploy to Pages (PRs touching `src/` etc. run build+test only)
+
+`apk.yml` is currently **manual only** (`workflow_dispatch`): until the field phase, planning happens in the WebApp and no APK is built or released unless the user asks. Do not restore its push trigger on your own. When run, it publishes a signed APK to `apk-latest` (fails if not signed with the fixed release key, see `docs/SIGNIEREN.md`), then `smoketest.yml` runs it in an emulator (`scripts/smoketest_prefs.py` seeds a test plan; the app's `selftest()` downloads the region named in prefs key `selftestDownload`).
 
 Data workflows publish to releases that the app downloads at runtime: `data.yml` (POIs from OSM, monthly → `data-latest`), `camp.yml` (Zeltplatz-Kandidaten / Eignungskarten), `tiles.yml` (PMTiles per region → `tiles-latest`, manual), `route.yml` (BRouter routes from `routes/*.json` → `route-latest`).
 
