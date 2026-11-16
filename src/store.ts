@@ -23,5 +23,10 @@ export async function save(key: string, value: unknown): Promise<void> {
 
 /** Speichern, ohne den Sync auszulösen (z. B. beim Übernehmen vom anderen Gerät). */
 export async function saveQuiet(key: string, value: unknown): Promise<void> {
-  await Preferences.set({ key, value: JSON.stringify(value) });
+  try {
+    await Preferences.set({ key, value: JSON.stringify(value) });
+  } catch (e) {
+    // z. B. Browser-Speicher voll oder im privaten Modus gesperrt: nicht still verlieren
+    throw new Error(`Speichern fehlgeschlagen (${key}): ${(e as Error).message || "Speicher voll oder gesperrt"}`);
+  }
 }

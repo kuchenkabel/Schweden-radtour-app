@@ -57,6 +57,8 @@ const S = {
   check: null as null | { center: LonLat; token: number },
   sync: { cfg: null as SyncConfig | null, last: "", error: "", dirty: false, busy: false },
   cycle: false,
+  layersOpen: false,
+  gps: "wartet" as "wartet" | "ok" | "verweigert" | "fehler",
   routing: "",
   /** Test-Modus: Position, Uhrzeit und gefahrene km von Hand setzen */
   fake: { on: false, picking: false, time: "14:00", km: 20 },
@@ -72,12 +74,36 @@ const esc = (s: unknown) =>
 const km = (v: number, digits = 0) => `${v.toLocaleString("de-DE", { maximumFractionDigits: digits, minimumFractionDigits: digits })} km`;
 const poiName = (p: Poi) => p.name || CAT_INFO[p.cat].label;
 
-function toast(msg: string, ms = 2600) {
+function toast(msg: string, ms = 2600, action?: { label: string; run: () => void | Promise<void> }) {
+  // Immer nur eine Meldung zeigen, sonst stapeln sie sich übereinander
+  document.querySelectorAll(".toast").forEach((x) => x.remove());
   const t = document.createElement("div");
   t.className = "toast";
+  t.setAttribute("role", "status");
   t.textContent = msg;
+  if (action) {
+    const b = document.createElement("button");
+    b.textContent = action.label;
+    b.addEventListener("click", () => { t.remove(); void action.run(); });
+    t.appendChild(b);
+  }
   document.body.appendChild(t);
-  setTimeout(() => t.remove(), ms);
+  setTimeout(() => t.remove(), action ? Math.max(ms, 8000) : ms);
+}
+
+/** Meldung mit „Rückgängig“: stellt den Plan von vor der Änderung wieder her. */
+function toastUndoPlan(msg: string, before: TourPlan) {
+  toast(msg, 8000, {
+    label: "Rückgängig",
+    run: async () => {
+      S.plan = before;
+      await savePlan(S.plan);
+      recompute();
+      if (S.plan.line.length > 1) mv.fit(bboxOf(S.plan.line));
+      render();
+      toast("Wiederhergestellt");
+    },
+  });
 }
 
 function dateOfDay(day: number): Date | null {
@@ -90,15 +116,33 @@ const fmtDate = (d: Date | null) => (d ? d.toLocaleDateString("de-DE", { weekday
 
 function openSheet(html: string, bind?: (el: HTMLElement) => void) {
   const sh = $("#sheet");
+  const wasOpen = !sh.hidden;
   sh.innerHTML = `<button class="close" aria-label="Schließen">✕</button>${html}`;
   sh.hidden = false;
+  sh.scrollTop = 0;
+  sh.setAttribute("role", "dialog");
+  // Zurück-Taste (Android) bzw. Browser-Zurück schließt das Fenster statt die App zu verlassen
+  if (!wasOpen) history.pushState({ sheet: true }, "");
   sh.querySelector(".close")!.addEventListener("click", closeSheet);
   bind?.(sh);
 }
 function closeSheet() {
-  $("#sheet").hidden = true;
+  const sh = $("#sheet");
+  if (sh.hidden) return;
+  sh.hidden = true;
   if (S.check) { S.check = null; mv?.setCheck(null); }
+  if (history.state?.sheet) { pendingBack++; history.back(); }
 }
+/** Eigene history.back()-Aufrufe, deren popstate nichts schließen soll. */
+let pendingBack = 0;
+window.addEventListener("popstate", () => {
+  if (pendingBack > 0) { pendingBack--; return; }
+  const sh = $("#sheet");
+  if (sh.hidden) return;
+  // Rückfragen (z. B. Sync-Konflikt) hängen am Schließen-Knopf
+  const close = sh.querySelector<HTMLElement>(".close");
+  if (close) close.click(); else closeSheet();
+});
 
 async function shareFile(name: string, content: string, mime: string, title: string) {
   if (Capacitor.isNativePlatform()) {
@@ -125,12 +169,14 @@ function pickFile(accept: string): Promise<string | null> {
 async function importGpxText(text: string) {
   try {
     const { name, line } = parseGpx(text);
+    const before = S.plan;
     S.plan = { ...S.plan, name, line, waypoints: [line[0], line[line.length - 1]], cuts: [0, line.length - 1], legFixed: [true], pinned: [], done: [] };
     await savePlan(S.plan);
     recompute();
     mv.fit(bboxOf(line));
     render();
-    toast(`Route „${name}“ importiert`);
+    if (before.line.length > 1) toastUndoPlan(`Route „${name}“ importiert, alte Route ersetzt`, before);
+    else toast(`Route „${name}“ importiert`);
   } catch (e) {
     toast(String((e as Error).message));
   }
@@ -139,13 +185,15 @@ async function importGpxText(text: string) {
 async function importPlanText(text: string) {
   try {
     const { plan, checks } = importPlanFile(text);
+    const before = S.plan;
     S.plan = plan;
     if (checks) { S.checks = { ...S.checks, ...checks }; await saveChecks(S.checks); }
     await savePlan(S.plan);
     recompute();
     if (plan.line.length > 1) mv.fit(bboxOf(plan.line));
     render();
-    toast("Plan importiert");
+    if (before.line.length > 1) toastUndoPlan("Plan importiert, alter Plan ersetzt", before);
+    else toast("Plan importiert");
   } catch (e) {
     toast(String((e as Error).message));
   }
@@ -341,7 +389,7 @@ function renderHeader() {
   const y = S.sync;
   const sync = !y.cfg ? "" : y.busy ? "⟳ Sync" : y.error ? "⚠️ Sync" : y.dirty ? "⟳ Sync" : "☁️ synchron";
   const title = !y.cfg ? "" : y.error ? `Sync-Problem: ${y.error}` : y.dirty ? "Änderungen werden hochgeladen" : `Zuletzt abgeglichen ${y.last ? new Date(y.last).toLocaleString("de-DE") : "–"}`;
-  $("#net").innerHTML = `${sync ? `<button id="syncBadge" class="badge${y.error ? " bad" : ""}" title="${esc(title)}">${sync}</button>` : ""}<span>${S.online ? "online" : "offline"}</span>`;
+  $("#net").innerHTML = `${sync ? `<button id="syncBadge" class="badge${y.error ? " bad" : ""}" title="${esc(title)}">${sync}</button>` : ""}<span class="netstate ${S.online ? "" : "off"}" title="${S.online ? "Internet verfügbar" : "Kein Internet: Karte aus Paket, Routing und Wetter pausieren"}">${S.online ? "online" : "⚠ offline"}</span>`;
   $("#syncBadge")?.addEventListener("click", () => setTab("mehr"));
 }
 
@@ -374,8 +422,10 @@ function renderPlanen(): string {
 
   if (!S.index) html += `<div class="card muted">${esc(S.busy || "Lade Ortsdaten …")}</div>`;
 
-  html += `<h2>Kartenebenen</h2>${catChips(S.visible, Object.keys(CAT_INFO) as Cat[], "layer")}
-    <div class="chips"><button class="chip ${S.cycle ? "on" : ""}" id="cycleLayer">🚲 Offizielle Radrouten${S.online ? "" : " (nur online)"}</button></div>`;
+  const active = (Object.keys(CAT_INFO) as Cat[]).filter((c) => S.visible.has(c));
+  html += `<details class="fold" id="layersFold" ${S.layersOpen ? "open" : ""}><summary><b>Kartenebenen</b> <span class="muted">${active.map((c) => CAT_INFO[c].icon).join(" ")}${S.cycle ? " 🚲" : ""} · ${active.length} aktiv</span></summary>
+    ${catChips(S.visible, Object.keys(CAT_INFO) as Cat[], "layer")}
+    <div class="chips"><button class="chip ${S.cycle ? "on" : ""}" id="cycleLayer">🚲 Offizielle Radrouten${S.online ? "" : " (nur online)"}</button></div></details>`;
 
   if (!hasRoute) {
     html += `<h2>1. Region wählen</h2>
@@ -386,8 +436,8 @@ function renderPlanen(): string {
           ? compareRegions(S.index)
               .map(
                 (s) => `<tr class="click" data-region="${s.region.id}"><td><b>${esc(s.region.name)}</b><br><span class="muted">${esc(s.region.hint)}</span></td>
-                <td class="num"><b>${s.score}</b></td><td class="num">${(s.density.badplats ?? 0).toFixed(1)}</td><td class="num">${(s.density.vindskydd ?? 0).toFixed(1)}</td>
-                <td class="num">${(s.density.camping ?? 0).toFixed(1)}</td><td class="num">${(s.density.bahnhof ?? 0).toFixed(1)}</td></tr>`,
+                <td class="num"><b>${s.score}</b></td><td class="num">${(s.density.badplats ?? 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td><td class="num">${(s.density.vindskydd ?? 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td>
+                <td class="num">${(s.density.camping ?? 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td><td class="num">${(s.density.bahnhof ?? 0).toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</td></tr>`,
               )
               .join("")
           : ""
@@ -403,11 +453,12 @@ function renderPlanen(): string {
     <div class="row" style="margin-top:6px"><label>Routenprofil <select id="profile">${(Object.keys(PROFILE_INFO) as RouteProfile[])
       .map((k) => `<option value="${k}" ${(p.profile ?? "familie") === k ? "selected" : ""}>${esc(PROFILE_INFO[k].label)}</option>`)
       .join("")}</select></label></div>
-    <p class="muted" style="margin:4px 0">${esc(PROFILE_INFO[p.profile ?? "familie"].hint)}.${hasRoute ? " Auf der Karte: Punkte ziehen zum Verschieben, die Linie anfassen und ziehen für einen neuen Zwischenpunkt, Punkt antippen zum Löschen. Neu berechnet wird nur das geänderte Stück; Strecken aus einer GPX-Datei bleiben sonst unverändert." : ""}</p>
+    <p class="muted" style="margin:4px 0">${esc(PROFILE_INFO[p.profile ?? "familie"].hint)}.</p>
+    ${hasRoute ? `<details class="muted"><summary>So änderst du die Route auf der Karte</summary><ul style="margin:4px 0;padding-left:18px"><li>Punkt ziehen: verschieben</li><li>Linie anfassen und ziehen: neuer Zwischenpunkt</li><li>Punkt antippen: löschen</li></ul>Neu berechnet wird nur das geänderte Stück. Strecken aus einer GPX-Datei bleiben sonst unverändert.</details>` : ""}
     ${
       p.waypoints.length
         ? `<div style="margin-top:8px">${p.waypoints
-            .map((w, i) => `<div class="row between list-item"><span>${i === 0 ? "Start" : i === p.waypoints.length - 1 ? "Ziel" : `Zwischenpunkt ${i}`} <span class="muted">${w[1].toFixed(3)}, ${w[0].toFixed(3)}</span></span><button class="btn small danger" data-delwp="${i}">✕</button></div>`)
+            .map((w, i) => `<div class="row between list-item"><span>${i === 0 ? "Start" : i === p.waypoints.length - 1 ? "Ziel" : `Zwischenpunkt ${i}`} <span class="muted">${w[1].toFixed(3)}, ${w[0].toFixed(3)}</span></span><button class="btn small danger" data-delwp="${i}" aria-label="Punkt löschen">✕</button></div>`)
             .join("")}</div>`
         : `<p class="muted">Tippe „Punkte auf Karte setzen“ und dann Start, Zwischenpunkte und Ziel auf die Karte. Die Route wird sofort berechnet. Das Fahrrad-Routing (BRouter) braucht Internet.</p>`
     }
@@ -419,16 +470,19 @@ function renderPlanen(): string {
   if (hasRoute) {
     const st = p.settings;
     const over = allDays > st.days;
-    html += `<h2>3. Etappen</h2><div class="card">
-      <div class="row"><label>Start <input type="date" id="startDate" value="${esc(p.startDate ?? "")}"></label>
-      <label>Tage <input type="number" id="sDays" min="1" max="60" value="${st.days}"></label></div>
-      <div class="row" style="margin-top:6px"><label>km/Tag <input type="number" id="sMin" value="${st.minKm}"> – <input type="number" id="sMax" value="${st.maxKm}"></label>
-      <label>Ziel <input type="number" id="sTarget" value="${st.targetKm}"></label>
-      <label>Ruhetag nach <input type="number" id="sRest" min="0" max="10" value="${st.restAfter}"> Tagen</label></div>
-      <div class="row" style="margin-top:6px"><label>Warnen ab <input type="number" id="sMaxUp" min="50" step="50" value="${st.maxUp}"> Hm/Tag</label>
-      <label>und ab <input type="number" id="sSteep" min="2" max="20" value="${st.steepPct}"> % Steigung</label></div>
+    html += `<h2>Etappen</h2><div class="card">
+      <div class="fields">
+        <label class="wide">Starttag <input type="date" id="startDate" value="${esc(p.startDate ?? "")}"></label>
+        <label>Tage gesamt <input type="number" inputmode="numeric" id="sDays" min="1" max="60" value="${st.days}"></label>
+        <label>Ruhetag nach … Fahrtagen <input type="number" inputmode="numeric" id="sRest" min="0" max="10" value="${st.restAfter}"></label>
+        <label>km/Tag mindestens <input type="number" inputmode="numeric" id="sMin" min="5" max="150" value="${st.minKm}"></label>
+        <label>km/Tag höchstens <input type="number" inputmode="numeric" id="sMax" min="5" max="200" value="${st.maxKm}"></label>
+        <label>km/Tag Wunsch <input type="number" inputmode="numeric" id="sTarget" min="5" max="200" value="${st.targetKm}"></label>
+        <label>Warnen ab Hm/Tag <input type="number" inputmode="numeric" id="sMaxUp" min="50" step="50" value="${st.maxUp}"></label>
+        <label>Warnen ab % Steigung <input type="number" inputmode="numeric" id="sSteep" min="2" max="20" value="${st.steepPct}"></label>
+      </div>
       <p>${rideDays} Fahrtage + ${allDays - rideDays} Ruhetage = <b class="${over ? "warn" : ""}">${allDays} Tage</b> von ${st.days}.
-      ${over ? `<span class="warn">Die Route ist für ${st.days} Tage zu lang: kürzen oder ein Stück mit dem Zug fahren.</span>` : `${st.days - allDays} Puffertage übrig.`}</p>
+      ${over ? `<span class="warn">Die Route ist für ${st.days} Tage zu lang: kürzen oder ein Stück mit dem Zug fahren.</span>` : `<span class="nowrap">${st.days - allDays} Puffertage übrig.</span>`}</p>
       <p class="muted">Höhenmeter zählen mit: ${st.hmPerKm} Hm ≈ 1 km mehr. ${p.pinned.length ? `${p.pinned.length} Schlafplatz/-plätze von Hand fixiert. <button class="btn small secondary" id="unpin">Zurücksetzen</button>` : ""}</p>
       <div class="row"><button class="btn secondary" id="sharePlan">Plan teilen</button><button class="btn secondary" id="importPlan">Plan importieren</button></div>
     </div>`;
@@ -506,6 +560,7 @@ function bindPlanen() {
     if (S.plan.waypoints.length >= 2) await calcRoute();
     else render();
   });
+  $("#layersFold")?.addEventListener("toggle", (e) => { S.layersOpen = (e.target as HTMLDetailsElement).open; });
   $("#cycleLayer")?.addEventListener("click", async () => {
     S.cycle = !S.cycle;
     mv.setCycleRoutes(S.cycle);
@@ -518,20 +573,22 @@ function bindPlanen() {
   });
   $("#toggleAll")?.addEventListener("click", () => { S.showAllPois = !S.showAllPois; updateMap(); render(); });
   $("#resetRoute")?.addEventListener("click", async () => {
+    const before = S.plan;
     S.plan = { ...S.plan, line: [], waypoints: [], cuts: undefined, legFixed: undefined, pinned: [], done: [] };
     await savePlan(S.plan);
     recompute();
     render();
+    toastUndoPlan("Route gelöscht", before);
   });
   const num = (id: string) => Number(($(`#${id}`) as HTMLInputElement).value);
   ["sDays", "sMin", "sMax", "sTarget", "sRest", "sMaxUp", "sSteep"].forEach((id) =>
     $(`#${id}`)?.addEventListener("change", async () => {
       const st = S.plan.settings;
-      st.days = num("sDays") || st.days;
-      st.minKm = num("sMin") || st.minKm;
+      st.days = Math.min(60, Math.max(1, Math.round(num("sDays")) || st.days));
+      st.minKm = Math.min(150, Math.max(5, num("sMin") || st.minKm));
       st.maxKm = Math.max(st.minKm, num("sMax") || st.maxKm);
       st.targetKm = Math.min(st.maxKm, Math.max(st.minKm, num("sTarget") || st.targetKm));
-      st.restAfter = Math.max(0, num("sRest"));
+      st.restAfter = Math.min(10, Math.max(0, Math.round(num("sRest")) || 0));
       st.maxUp = Math.max(50, num("sMaxUp") || st.maxUp);
       st.steepPct = Math.min(20, Math.max(2, num("sSteep") || st.steepPct));
       await savePlan(S.plan);
@@ -1110,7 +1167,11 @@ function renderListen(): string {
       <p class="progress">${doneCount} von ${totalCount} erledigt</p>
       ${list
         .map(
-          (g) => `<div class="card"><h3>${esc(g.title)}</h3>
+          (g) => {
+            const mine = S.custom.filter((c) => c.group === g.id);
+            const n = g.items.length + mine.length;
+            const d = g.items.filter((i) => S.checks[i.id]).length + mine.filter((c) => S.checks[c.id]).length;
+            return `<div class="card"><h3 class="row between"><span>${esc(g.title)}</span><span class="count ${d === n ? "ok" : ""}">${d === n ? "✓ " : ""}${d}/${n}</span></h3>
           ${g.items
             .map((i) => {
               let due = "";
@@ -1126,10 +1187,11 @@ function renderListen(): string {
             .join("")}
           ${S.custom
             .filter((c) => c.group === g.id)
-            .map((c) => `<label class="check ${S.checks[c.id] ? "done" : ""}"><input type="checkbox" data-check="${c.id}" ${S.checks[c.id] ? "checked" : ""}><div class="t">${esc(c.title)}</div><button class="btn small danger" data-delcustom="${c.id}" style="margin-left:auto">✕</button></label>`)
+            .map((c) => `<label class="check ${S.checks[c.id] ? "done" : ""}"><input type="checkbox" data-check="${c.id}" ${S.checks[c.id] ? "checked" : ""}><div class="t">${esc(c.title)}</div><button class="btn small danger" data-delcustom="${c.id}" style="margin-left:auto" aria-label="Punkt löschen">✕</button></label>`)
             .join("")}
-          <div class="row" style="margin-top:6px"><input placeholder="Eigener Punkt" data-newin="${g.id}" style="flex:1"><button class="btn small secondary" data-add="${g.id}">+</button></div>
-        </div>`,
+          <div class="row" style="margin-top:6px"><input placeholder="Eigener Punkt" data-newin="${g.id}" style="flex:1"><button class="btn small secondary" data-add="${g.id}" aria-label="Punkt hinzufügen">+</button></div>
+        </div>`;
+          },
         )
         .join("")}`;
   };
@@ -1141,8 +1203,8 @@ function bindListen() {
   panel().querySelectorAll<HTMLInputElement>("[data-check]").forEach((cb) =>
     cb.addEventListener("change", async () => {
       S.checks[cb.dataset.check!] = cb.checked;
-      cb.closest(".check")?.classList.toggle("done", cb.checked);
       await saveChecks(S.checks);
+      render(); // Zähler und Fortschritt aktualisieren
     }),
   );
   panel().querySelectorAll<HTMLElement>("[data-add]").forEach((b) =>
@@ -1155,32 +1217,50 @@ function bindListen() {
       render();
     }),
   );
+  panel().querySelectorAll<HTMLInputElement>("[data-newin]").forEach((inp) =>
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") panel().querySelector<HTMLElement>(`[data-add="${inp.dataset.newin}"]`)?.click();
+    }),
+  );
   panel().querySelectorAll<HTMLElement>("[data-delcustom]").forEach((b) =>
     b.addEventListener("click", async (e) => {
       e.preventDefault();
+      const before = S.custom;
       S.custom = S.custom.filter((c) => c.id !== b.dataset.delcustom);
       await saveCustomItems(S.custom);
       render();
+      toast("Punkt gelöscht", 8000, { label: "Rückgängig", run: async () => { S.custom = before; await saveCustomItems(S.custom); render(); } });
     }),
   );
   $("#resetChecks")?.addEventListener("click", async () => {
+    const before = { ...S.checks };
     for (const g of PACKLISTE) for (const i of g.items) delete S.checks[i.id];
     await saveChecks(S.checks);
     render();
+    toast("Packliste zurückgesetzt", 8000, { label: "Rückgängig", run: async () => { S.checks = before; await saveChecks(S.checks); render(); } });
   });
 }
 
 // ---------- Notfall ----------
 function renderNotfall(): string {
+  // Ohne GPS: ab Start der aktuellen Etappe bzw. der Route, damit die Seite nie leer bleibt
+  const st = S.stages.find((x) => !S.plan.done.includes(x.day)) ?? S.stages[0];
+  const fallback: LonLat | null = S.plan.line.length > 1 ? S.plan.line[st ? indexAtKm(S.cum, st.fromKm) : 0] : null;
+  const ref = S.pos ?? fallback;
+  const gpsNote = S.pos ? "" : `<div class="card warnbox"><b>📡 ${S.gps === "verweigert" ? "Standort nicht erlaubt" : S.gps === "fehler" ? "Kein GPS-Empfang" : "Warte auf GPS …"}</b>
+    <div class="muted">${fallback ? `Entfernungen gelten ab ${st ? `Start von Tag ${st.day}` : "Routenstart"}, nicht ab eurem Standort.` : "Ohne Standort und ohne Route kann ich keine Orte in der Nähe zeigen."}
+    ${S.gps === "verweigert" ? " Standort in den App- bzw. Browser-Einstellungen erlauben." : ""}</div>
+    <div class="row" style="margin-top:6px"><button class="btn small secondary" id="gpsRetry">Standort erneut abfragen</button></div></div>`;
   const near = (cats: Cat[]) =>
-    S.pos && S.index
-      ? S.index.nearest(S.pos, new Set(cats), 80, 3)
+    ref && S.index
+      ? S.index.nearest(ref, new Set(cats), 80, 3)
           .map((r) => `<div class="list-item click" data-poi="${r.poi.id}"><span class="ico">${CAT_INFO[r.poi.cat].icon}</span><div class="main"><b>${esc(poiName(r.poi))}</b>
             <div class="muted">${r.poi.x.oh ? esc(r.poi.x.oh) : ""}</div>${r.poi.x.tel ? `<a href="tel:${esc(r.poi.x.tel.replace(/\s/g, ""))}">${esc(r.poi.x.tel)}</a>` : ""}</div><span class="dist">${km(r.km, 1)}</span></div>`)
           .join("") || `<p class="muted">Nichts im Umkreis von 80 km.</p>`
-      : `<p class="muted">Für die nächsten Orte bitte GPS erlauben.</p>`;
+      : `<p class="muted">${S.index ? "Kein Standort bekannt." : "Ortsdaten werden geladen …"}</p>`;
   return `<div class="card row"><a class="btn danger" href="tel:112" style="font-size:18px">📞 112 Notruf</a><a class="btn secondary" href="tel:1177">1177 Vårdguiden</a>
     <button class="btn secondary" id="smsPos">📍 Standort per SMS</button></div>
+    ${gpsNote}
     <h2>Nächste Apotheke</h2><div class="card">${near(["apotek"])}</div>
     <h2>Nächste Vårdcentral / Klinik</h2><div class="card">${near(["vard"])}</div>
     <h2>Notfallkarten</h2>
@@ -1193,8 +1273,9 @@ function renderNotfall(): string {
 
 function bindNotfall() {
   bindPoiClicks();
+  $("#gpsRetry")?.addEventListener("click", () => { S.gps = "wartet"; render(); startGps(); });
   $("#smsPos")?.addEventListener("click", () => {
-    if (!S.pos) return toast("Position noch unbekannt");
+    if (!S.pos) return toast("Position noch unbekannt – GPS einschalten und kurz warten", 4000);
     const [lon, lat] = S.pos;
     const body = `Unser Standort: ${lat.toFixed(5)}, ${lon.toFixed(5)} https://www.openstreetmap.org/?mlat=${lat.toFixed(5)}&mlon=${lon.toFixed(5)}#map=16/${lat.toFixed(5)}/${lon.toFixed(5)}`;
     location.href = `sms:?body=${encodeURIComponent(body)}`;
@@ -1309,17 +1390,30 @@ async function scheduleReminders() {
 }
 
 // ---------- GPS ----------
+let gpsWatch: string | null = null;
 async function startGps() {
+  const setGps = (g: typeof S.gps) => {
+    if (S.gps === g) return;
+    S.gps = g;
+    if (S.tab === "notfall") render();
+  };
   try {
+    if (gpsWatch) { await Geolocation.clearWatch({ id: gpsWatch }); gpsWatch = null; }
     if (Capacitor.isNativePlatform()) {
       const perm = await Geolocation.requestPermissions();
-      if (perm.location === "denied") return;
+      if (perm.location === "denied") return setGps("verweigert");
     }
-    await Geolocation.watchPosition({ enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }, (pos) => {
+    gpsWatch = await Geolocation.watchPosition({ enableHighAccuracy: true, maximumAge: 15000, timeout: 30000 }, (pos, err) => {
+      if (err && !pos) {
+        // code 1 = PERMISSION_DENIED (Browser); sonst kein Empfang/Zeitüberschreitung
+        if (!S.pos) setGps((err as { code?: number }).code === 1 || /denied|permission/i.test(String(err.message)) ? "verweigert" : "fehler");
+        return;
+      }
       if (!pos || S.fake.on) return;
       const prev = S.pos;
       S.pos = [pos.coords.longitude, pos.coords.latitude];
       S.posAccuracy = pos.coords.accuracy;
+      S.gps = "ok";
       mv?.setPosition(S.pos);
       // Panel nur bei spürbarer Bewegung neu zeichnen (Akku)
       if (!prev || haversineKm(prev, S.pos) > 0.2) {
@@ -1327,7 +1421,7 @@ async function startGps() {
       }
     });
   } catch {
-    /* GPS nicht verfügbar */
+    setGps("fehler");
   }
 }
 
@@ -1439,9 +1533,10 @@ function bindSync() {
     }
   });
   $("#syncOff")?.addEventListener("click", async () => {
+    const cfg = S.sync.cfg;
     await disconnect();
     await refreshSyncStatus();
-    toast("Sync getrennt (Daten auf diesem Gerät bleiben)");
+    toast("Sync getrennt (Daten auf diesem Gerät bleiben)", 8000, cfg ? { label: "Rückgängig", run: () => doConnect(cfg) } : undefined);
   });
 }
 
