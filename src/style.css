@@ -172,3 +172,33 @@ nav#tabs button:focus-visible { outline-offset: -3px; }
 .wp-marker.ziel { background: #c62828; }
 .wp-marker.ghost { opacity: .7; pointer-events: none; }
 .elev { width: 100%; height: 44px; display: block; margin-top: 4px; }
+
+/* ---------- Bedienbarkeit ---------- */
+.toast { display: flex; gap: 12px; align-items: center; }
+.toast button { border: 0; background: none; color: var(--yellow); font-weight: 700; font-size: 14px; padding: 4px 2px; cursor: pointer; white-space: nowrap; }
+.nowrap { white-space: nowrap; }
+details.fold { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin: 4px 0 8px; }
+details.fold > summary, details > summary { cursor: pointer; }
+details.fold > summary { list-style-position: inside; }
+details.fold[open] > summary { margin-bottom: 6px; }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.fields label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--muted); }
+.fields label.wide { grid-column: 1 / -1; }
+.fields input { width: 100%; color: var(--text); font-size: 16px; }
+.count { font-size: 12px; font-weight: 600; color: var(--muted); background: var(--bg); border-radius: 10px; padding: 2px 8px; }
+.count.ok { color: #fff; background: var(--ok); }
+.warnbox { border-color: #f0c36d; background: #fff8e1; }
+.netstate.off { background: var(--yellow); color: #1d2330; border-radius: 10px; padding: 2px 8px; font-weight: 600; }
+.check { cursor: pointer; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--blue); outline-offset: 0; border-color: var(--blue); }
+/* Finger-Bedienung: Ziele mindestens ~40 px, Eingaben 16 px (sonst zoomt das Handy beim Antippen) */
+@media (pointer: coarse) {
+  button.btn.small { min-height: 38px; min-width: 40px; padding: 7px 12px; font-size: 13px; }
+  .chip { padding: 7px 12px; }
+  input, select, textarea { font-size: 16px; }
+  #mapbtns button { padding: 8px 12px; }
+  #sheet .close { width: 44px; height: 44px; margin: -8px -8px 0 0; }
+  #splitter { height: 30px; }
+  #splitter button { height: 26px; }
+}
+.toast { width: max-content; }
